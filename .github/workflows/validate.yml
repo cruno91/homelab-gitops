@@ -1,0 +1,94 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: yamllint
+        run: |
+          pip install --user yamllint==1.35.1
+          yamllint .
+
+      - name: kubeconform
+        uses: yannh/kubeconform-action@v1
+        with:
+          patterns: |
+            bootstrap/*.yaml
+            clusters/**/*.yaml
+            platform/**/*.yaml
+            apps/**/*.yaml
+          schema_locations: |
+            default
+            https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+          strict: true
+          summary: true
+
+  secrets-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Any file named *.enc.yaml MUST contain a top-level `sops:` block and at
+      # least one ENC[ value. Catches the "wrote a new secret, named it .enc.yaml,
+      # forgot to `sops -e -i`" footgun before the plaintext lands on GitHub.
+      - name: Verify *.enc.yaml files are SOPS-encrypted
+        run: |
+          set -euo pipefail
+          fail=0
+          mapfile -t files < <(find . -type f \( -name '*.enc.yaml' -o -name '*.enc.yml' \) -not -path './.git/*')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No *.enc.yaml files found yet — nothing to check."
+            exit 0
+          fi
+          for f in "${files[@]}"; do
+            if ! grep -q '^sops:' "$f"; then
+              echo "::error file=$f::Missing 'sops:' top-level metadata — file is named *.enc.yaml but is not SOPS-encrypted"
+              fail=1
+              continue
+            fi
+            if ! grep -q 'ENC\[' "$f"; then
+              echo "::error file=$f::No ENC[...] values found — file appears unencrypted"
+              fail=1
+            fi
+          done
+          exit $fail
+
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Add argo helm repo
+        run: helm repo add argo https://argoproj.github.io/argo-helm
+
+      # Pull the chart version from argocd-app.yaml so the render check breaks
+      # the moment the pinned version drifts from a working render.
+      - name: Render argo-cd chart with bootstrap values
+        run: |
+          set -euo pipefail
+          version=$(awk '/targetRevision:/ {print $2; exit}' bootstrap/argocd-app.yaml)
+          echo "Rendering argo-cd chart version $version with bootstrap/argocd-values.yaml"
+          helm template argocd argo/argo-cd \
+            --version "$version" \
+            --namespace argocd \
+            -f bootstrap/argocd-values.yaml > /dev/null
+
+      - name: Kustomize build each clusters/*
+        run: |
+          set -euo pipefail
+          for d in clusters/*/; do
+            echo "=== $d ==="
+            kubectl kustomize "$d" > /dev/null
+          done
