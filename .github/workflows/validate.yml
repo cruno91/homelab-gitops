@@ -16,19 +16,41 @@ jobs:
           pip install --user yamllint==1.35.1
           yamllint .
 
-      - name: kubeconform
-        uses: yannh/kubeconform-action@v1
-        with:
-          patterns: |
-            bootstrap/*.yaml
-            clusters/**/*.yaml
-            platform/**/*.yaml
-            apps/**/*.yaml
-          schema_locations: |
-            default
-            https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
-          strict: true
-          summary: true
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | sudo tar xz -C /usr/local/bin/ kubeconform
+          kubeconform -v
+
+      - name: Run kubeconform
+        run: |
+          set -euo pipefail
+          # Validate every yaml under bootstrap/, clusters/, platform/, apps/
+          # except kustomization files (the kustomize Kustomization kind isn't
+          # in standard catalogs; the render job covers kustomization
+          # correctness separately by running `kustomize build`).
+          # Exclusions:
+          # - kustomization files: not in standard schema catalogs; render job
+          #   covers them by actually running `kustomize build`
+          # - *values.yaml: Helm values, not K8s manifests; render job covers
+          #   them by running `helm template`
+          find_args=(
+            bootstrap clusters platform apps
+            -type f
+            \( -name '*.yaml' -o -name '*.yml' \)
+            ! -name 'kustomization.yaml' ! -name 'kustomization.yml'
+            ! -name 'values.yaml' ! -name '*-values.yaml'
+          )
+          count=$(find "${find_args[@]}" 2>/dev/null | wc -l | tr -d ' ')
+          printf 'Validating %s files\n' "$count"
+          if [ "$count" -eq 0 ]; then
+            exit 0
+          fi
+          find "${find_args[@]}" -print0 2>/dev/null \
+            | xargs -0 kubeconform -strict -summary \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
   secrets-check:
     runs-on: ubuntu-latest
