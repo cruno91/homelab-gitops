@@ -25,9 +25,11 @@ spec:
         targetRevision: main
         path: '{{.path.path}}'
       destination:
-        # Argo cluster name must match `argocd cluster add --name <name>` for edge/dev
-        # `mgmt` is the in-cluster default and resolves automatically
-        name: '{{.path.basename}}'
+        # mgmt targets the in-cluster API directly (server-URL form, no cluster Secret needed);
+        # edge/dev resolve by name and require `argocd cluster add --name <name>` first.
+        # Argo treats an empty-string server-or-name as "not set" and uses the populated one.
+        server: '{{ if eq .path.basename "mgmt" }}https://kubernetes.default.svc{{ end }}'
+        name: '{{ if ne .path.basename "mgmt" }}{{ .path.basename }}{{ end }}'
         namespace: argocd
       syncPolicy:
         automated:
