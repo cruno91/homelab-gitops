@@ -8,3 +8,28 @@ kubeconfig.*
 *.kubeconfig
 
 .DS_Store
+
+# SOPS decrypt outputs — easy to accidentally commit
+*.dec.yaml
+*.dec.yml
+*.decrypted.yaml
+*.decrypted.yml
+
+# SSH and other private keys
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.pem
+*.key
+
+# Local env files (often hold tokens)
+.env
+.env.local
+.envrc.local
+
+# Local editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
