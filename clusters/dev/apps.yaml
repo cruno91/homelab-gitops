@@ -1,0 +1,4 @@
+# Per-cluster Applications for `dev` (Harvester guest). Populated in Phase 2.
+apiVersion: v1
+kind: List
+items: []

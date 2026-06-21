@@ -1,0 +1,6 @@
+# Baseline stamped onto ephemeral sandbox clusters. Excluded from the
+# root ApplicationSet so it's never applied directly. Phase 6 wires this
+# into per-sandbox provisioning.
+apiVersion: v1
+kind: List
+items: []

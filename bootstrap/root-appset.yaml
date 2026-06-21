@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-bootstrap
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/cruno91/homelab-gitops.git
+        revision: main
+        directories:
+          - path: clusters/*
+          # sandbox-template is a baseline stamped onto ephemeral clusters, never applied directly
+          - path: clusters/sandbox-template
+            exclude: true
+  template:
+    metadata:
+      name: '{{.path.basename}}-bootstrap'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/cruno91/homelab-gitops.git
+        targetRevision: main
+        path: '{{.path.path}}'
+      destination:
+        # Argo cluster name must match `argocd cluster add --name <name>` for edge/dev
+        # `mgmt` is the in-cluster default and resolves automatically
+        name: '{{.path.basename}}'
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true

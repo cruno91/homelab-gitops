@@ -1,0 +1,10 @@
+*.age
+age.key
+key.txt
+sops.key
+
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+
+.DS_Store

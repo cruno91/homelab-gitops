@@ -1,0 +1,5 @@
+# Per-cluster Applications for `mgmt`. Populated in Phase 2 (Week 9+) with
+# platform components (cert-manager, observability, harbor, etc.).
+apiVersion: v1
+kind: List
+items: []

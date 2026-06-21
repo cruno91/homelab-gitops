@@ -1,0 +1,28 @@
+global:
+  domain: argocd.yavin.internal
+
+server:
+  # Pi-hole round-robins argocd.yavin.internal to the three RKE2 nodes;
+  # rke2-ingress-nginx on each hostPort 443 terminates TLS at the ingress.
+  # argocd-server speaks plain HTTP behind it.
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.yavin.internal
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+configs:
+  params:
+    server.insecure: "true"
+  cm:
+    application.instanceLabelKey: argocd.argoproj.io/instance
+    timeout.reconciliation: 180s
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
