@@ -7,7 +7,7 @@ Single source of truth for every cluster in the lab. Argo CD on the `mgmt` clust
 | Name | Distro | Where | Role |
 |---|---|---|---|
 | `mgmt` | RKE2 | Proxmox on NUC #1 (3-node) | Rancher, Argo CD, Harbor, central observability |
-| `edge` | K3s | 3x Raspberry Pi 5 | Always-on; internal DNS (Pi-hole), uptime probes |
+| `edge` | K3s | 3x Raspberry Pi 5 | Always-on; uptime probes |
 | `dev` | RKE2 | Harvester guest cluster on NUC #2 | Long-lived golden-path deploy target |
 | `sandbox-*` | RKE2 | Harvester guest clusters | Ephemeral; recreated weekly |
 
