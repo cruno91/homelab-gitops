@@ -1,0 +1,13 @@
+---
+# Bootstrap Issuer. Useful for cert-manager's own internals (webhook CA bootstrap
+# pattern) and for "does cert-manager work end-to-end" smoke tests. Not for
+# real workload TLS — that gets a step-ca ClusterIssuer in a follow-up
+# (see ADR-0006). Sync-wave 1 so the cert-manager.io CRDs (wave 0) land first.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  selfSigned: {}
