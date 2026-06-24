@@ -1,5 +1,26 @@
-# Per-cluster Applications for `mgmt`. Populated in Phase 2 (Week 9+) with
-# platform components (cert-manager, observability, harbor, etc.).
-apiVersion: v1
-kind: List
-items: []
+---
+# Per-cluster Applications for `mgmt`. The platform-mgmt umbrella below applies
+# the cross-cluster platform ApplicationSets (cert-manager, ...) to mgmt's
+# argocd namespace; each ApplicationSet then fans its workload Applications
+# out to every registered cluster (mgmt + edge + dev). mgmt-only workloads
+# (Harbor in Week 11, etc.) get their own Applications added here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-mgmt
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cruno91/homelab-gitops.git
+    targetRevision: main
+    path: platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

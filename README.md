@@ -24,13 +24,13 @@ homelab-gitops/
 │   ├── edge/
 │   ├── dev/
 │   └── sandbox-template/     # excluded from the bootstrap ApplicationSet; stamped onto ephemeral clusters
-├── platform/                 # shared platform components (cert-manager, gateway, observability, etc.) — populated in Phase 2
+├── platform/                 # shared platform components, one ApplicationSet per component, cluster-generator fans to every registered cluster (see ADR-0008)
 └── apps/                     # workload Application manifests — populated in Phase 3 via golden-path CI PRs
 ```
 
 ## Bootstrap order
 
-Run these once, by hand. Everything after step 4 is Git. The full chronological build log is in [`docs/setup-log.md`](./docs/setup-log.md); decision rationale lives in [`docs/adr/`](./docs/adr/).
+Run these once, by hand. Everything after step 4 is Git. The full chronological build log is in [`docs/setup-log.md`](./docs/setup-log.md); decision rationale lives in [`docs/adr/`](./docs/adr/); a concept-level walkthrough of how the platform layer (`platform/`) fans components out across clusters is in [`docs/platform-layer.md`](./docs/platform-layer.md).
 
 1. **Generate age key on your workstation:**
    ```

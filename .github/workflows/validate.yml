@@ -114,3 +114,33 @@ jobs:
             echo "=== $d ==="
             kubectl kustomize "$d" > /dev/null
           done
+
+      # platform/ is the umbrella that mgmt's platform-mgmt Application points
+      # at; each platform/<component>/extras/ is the multi-source extras dir
+      # for that component's ApplicationSet template. Catch kustomize errors
+      # in either layer before they reach Argo.
+      - name: Kustomize build platform umbrella + each platform/*/extras
+        run: |
+          set -euo pipefail
+          if [ -f platform/kustomization.yaml ]; then
+            echo "=== platform/ ==="
+            kubectl kustomize platform > /dev/null
+          fi
+          for d in platform/*/extras/; do
+            [ -d "$d" ] || continue
+            echo "=== $d ==="
+            kubectl kustomize "$d" > /dev/null
+          done
+
+      # Render every chart that's pinned in a platform/<component>/appset.yaml
+      # so a stale chart version or bad values fail CI before they fail Argo.
+      - name: Render platform charts
+        run: |
+          set -euo pipefail
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm template cert-manager jetstack/cert-manager \
+            --version v1.20.2 \
+            --namespace cert-manager \
+            --set crds.enabled=true \
+            --set global.leaderElection.namespace=cert-manager > /dev/null

@@ -1,0 +1,57 @@
+---
+# Fans cert-manager out to every cluster registered with this Argo CD
+# (mgmt via in-cluster, edge via cluster Secret, dev once it exists).
+#
+# Each generated Application is multi-source: the upstream Helm chart from
+# Jetstack, and the SelfSigned ClusterIssuer + any other cluster-scoped
+# extras from `platform/cert-manager/extras/`. ServerSideApply + automated
+# retry handles the "CRD installs same sync as the ClusterIssuer that uses
+# it" ordering: the ClusterIssuer apply fails the first attempt, succeeds
+# on retry once the CRD is established.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cert-manager
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters: {}                       # selects every registered cluster, incl. in-cluster
+  template:
+    metadata:
+      name: 'cert-manager-{{ .name }}'
+    spec:
+      project: default
+      sources:
+        - chart: cert-manager
+          repoURL: https://charts.jetstack.io
+          targetRevision: v1.20.2
+          helm:
+            releaseName: cert-manager
+            values: |
+              crds:
+                enabled: true
+              global:
+                leaderElection:
+                  namespace: cert-manager
+        - repoURL: https://github.com/cruno91/homelab-gitops.git
+          targetRevision: main
+          path: platform/cert-manager/extras
+      destination:
+        server: '{{ .server }}'
+        namespace: cert-manager
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - RespectIgnoreDifferences=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
