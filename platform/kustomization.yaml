@@ -5,3 +5,6 @@ kind: Kustomization
 # their `appset.yaml` here.
 resources:
   - cert-manager/appset.yaml
+  - gateway-api/appset.yaml
+  - envoy-gateway/appset.yaml
+  - envoy-gateway/listener-appset.yaml

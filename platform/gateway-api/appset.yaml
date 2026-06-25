@@ -1,0 +1,43 @@
+---
+# Installs the upstream Gateway API standard-channel CRDs to every registered
+# cluster. CRDs are vendored at `manifests/standard-install.yaml`; bump by
+# re-fetching the file from a newer Gateway API release tag.
+#
+# These CRDs are a hard prerequisite for the Envoy Gateway component below;
+# everything that references gateway.networking.k8s.io types waits on this
+# Application to be Synced.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: gateway-api
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: 'gateway-api-{{ .name }}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/cruno91/homelab-gitops.git
+        targetRevision: main
+        path: platform/gateway-api/manifests
+      destination:
+        server: '{{ .server }}'
+        namespace: gateway-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m

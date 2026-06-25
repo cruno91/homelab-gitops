@@ -1,0 +1,51 @@
+---
+# Installs the Envoy Gateway *controller* (operator) on every registered cluster.
+# The controller doesn't bind host ports on its own — data plane Envoy pods are
+# only spawned when a `Gateway` resource exists referencing a GatewayClass that
+# this controller owns. So installing the controller on mgmt today is safe
+# (rke2-ingress-nginx still owns 80/443); a `Gateway` on mgmt is deferred until
+# Rancher and Argo CD migrate from Ingress to HTTPRoute (Phase 3).
+#
+# extras/ ships the shared GatewayClass + EnvoyProxy config; a separate
+# listener-appset.yaml fans Gateways out to a subset of clusters.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: envoy-gateway
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: 'envoy-gateway-{{ .name }}'
+    spec:
+      project: default
+      sources:
+        - repoURL: docker.io/envoyproxy
+          chart: gateway-helm
+          targetRevision: v1.8.1
+          helm:
+            releaseName: envoy-gateway
+        - repoURL: https://github.com/cruno91/homelab-gitops.git
+          targetRevision: main
+          path: platform/envoy-gateway/extras
+      destination:
+        server: '{{ .server }}'
+        namespace: envoy-gateway-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - RespectIgnoreDifferences=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m

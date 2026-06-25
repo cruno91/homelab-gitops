@@ -73,7 +73,9 @@ This is sometimes called the **app-of-appsets pattern**. The umbrella exists so 
 
 ### `platform/` — the umbrella's source
 
-The directory itself. `platform/kustomization.yaml` is the umbrella's index — it lists every `<component>/appset.yaml` as a resource. Today that's just cert-manager. Next week when Gateway API arrives, you add `- gateway-api/appset.yaml` to the list, and `platform-mgmt` picks it up on next reconcile and creates the new ApplicationSet on mgmt, which fans out, and Gateway API lands everywhere with no per-cluster Git edits.
+The directory itself. `platform/kustomization.yaml` is the umbrella's index — it lists every `<component>/appset.yaml` as a resource. Adding a new platform component (Harbor, observability, step-ca, …) is just dropping a file into `platform/<new-component>/appset.yaml` and adding it to the umbrella — `platform-mgmt` picks it up on next reconcile, creates the new ApplicationSet on mgmt, which fans the per-cluster Applications out. No per-cluster Git edits.
+
+Some components also ship a second ApplicationSet for the per-cluster pieces that should only target a subset of clusters — e.g. `envoy-gateway/appset.yaml` installs the controller everywhere via a cluster-generator, while `envoy-gateway/listener-appset.yaml` uses a list-generator to drop a `Gateway` resource only on the clusters that have safe LB exposure today.
 
 ## The chain, end-to-end
 

@@ -1,0 +1,25 @@
+---
+# Shared data plane config referenced by the GatewayClass below. Applied on
+# every cluster (uniform), but only materializes Envoy pods on clusters that
+# actually create a Gateway resource — see listener-appset.yaml for which
+# clusters get a Gateway today.
+#
+# Data plane runs as a DaemonSet (one Envoy pod per node) with a LoadBalancer
+# Service. On edge (K3s) klipper-lb opens the listener ports on every node via
+# hostPort and forwards to the Service ClusterIP, giving Pi-hole the
+# round-robin-to-any-node-IP exposure model. On a future mgmt rollout MetalLB
+# would play the same role.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: shared
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDaemonSet: {}
+      envoyService:
+        type: LoadBalancer
