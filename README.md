@@ -30,7 +30,7 @@ homelab-gitops/
 
 ## Bootstrap order
 
-Run these once, by hand. Everything after step 4 is Git. The full chronological build log is in [`docs/setup-log.md`](./docs/setup-log.md); decision rationale lives in [`docs/adr/`](./docs/adr/); a concept-level walkthrough of how the platform layer (`platform/`) fans components out across clusters is in [`docs/platform-layer.md`](./docs/platform-layer.md).
+Run these once, by hand. Everything after step 4 is Git. The decision rationale lives in [`docs/adr/`](./docs/adr/); a concept-level walkthrough of how the platform layer (`platform/`) fans components out across clusters is in [`docs/platform-layer.md`](./docs/platform-layer.md).
 
 1. **Generate age key on your workstation:**
    ```
