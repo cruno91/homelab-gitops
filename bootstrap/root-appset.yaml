@@ -25,11 +25,13 @@ spec:
         targetRevision: main
         path: '{{.path.path}}'
       destination:
-        # mgmt targets the in-cluster API directly (server-URL form, no cluster Secret needed);
-        # edge/dev resolve by name and require `argocd cluster add --name <name>` first.
-        # Argo treats an empty-string server-or-name as "not set" and uses the populated one.
-        server: '{{ if eq .path.basename "mgmt" }}https://kubernetes.default.svc{{ end }}'
-        name: '{{ if ne .path.basename "mgmt" }}{{ .path.basename }}{{ end }}'
+        # Every cluster's bootstrap Application carries Argo CD Application
+        # resources (per-cluster workload Apps); those Applications are
+        # reconciled by the Argo controller on mgmt regardless of which
+        # cluster they ultimately target. So all bootstraps apply to mgmt's
+        # argocd namespace. Each child Application's own destination field
+        # decides which cluster the workload lands on.
+        server: https://kubernetes.default.svc
         namespace: argocd
       syncPolicy:
         automated:

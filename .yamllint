@@ -14,4 +14,3 @@ rules:
 
 ignore: |
   .github/
-  platform/*/manifests/

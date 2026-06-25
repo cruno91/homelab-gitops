@@ -35,17 +35,12 @@ jobs:
           #   covers them by actually running `kustomize build`
           # - *values.yaml: Helm values, not K8s manifests; render job covers
           #   them by running `helm template`
-          # - platform/*/manifests/: vendored upstream CRD bundles. Their CRD
-          #   definitions use newer apiextensions.k8s.io/v1 fields than the
-          #   schema kubeconform ships; render job + the cluster itself catch
-          #   real issues.
           find_args=(
             bootstrap clusters platform apps
             -type f
             \( -name '*.yaml' -o -name '*.yml' \)
             ! -name 'kustomization.yaml' ! -name 'kustomization.yml'
             ! -name 'values.yaml' ! -name '*-values.yaml'
-            ! -path 'platform/*/manifests/*'
           )
           count=$(find "${find_args[@]}" 2>/dev/null | wc -l | tr -d ' ')
           printf 'Validating %s files\n' "$count"
@@ -121,9 +116,9 @@ jobs:
           done
 
       # platform/ is the umbrella that mgmt's platform-mgmt Application points
-      # at; each platform/<component>/{extras,listener,manifests}/ is a path
-      # referenced by an ApplicationSet template. apps/<name>/ is a workload
-      # Application path. Catch kustomize errors in every layer before Argo.
+      # at; each platform/<component>/{extras,listener}/ is a path referenced
+      # by an ApplicationSet template. apps/<name>/ is a workload Application
+      # path. Catch kustomize errors in every layer before Argo.
       - name: Kustomize build platform umbrella + every kustomized subdir
         run: |
           set -euo pipefail
@@ -131,7 +126,7 @@ jobs:
             echo "=== platform/ ==="
             kubectl kustomize platform > /dev/null
           fi
-          for d in platform/*/extras/ platform/*/listener/ platform/*/manifests/ apps/*/; do
+          for d in platform/*/extras/ platform/*/listener/ apps/*/; do
             [ -d "$d" ] && [ -f "$d/kustomization.yaml" ] || continue
             echo "=== $d ==="
             kubectl kustomize "$d" > /dev/null
