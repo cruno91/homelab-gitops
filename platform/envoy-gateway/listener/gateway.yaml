@@ -1,0 +1,27 @@
+---
+# Single shared Gateway per cluster. HTTPRoutes in any namespace attach via
+# `parentRefs` (allowedRoutes.namespaces.from: All) so app teams don't need
+# their own Gateway — they just route hostnames under *.yavin.internal.
+#
+# HTTPS-only on 443. No HTTP listener: internal-only lab, no ACME, no
+# redirect needed. Add a plain HTTP listener later if a workload needs it.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: yavin
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: envoy
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.yavin.internal"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: wildcard-yavin-internal-tls
+      allowedRoutes:
+        namespaces:
+          from: All

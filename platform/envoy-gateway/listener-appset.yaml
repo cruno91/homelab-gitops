@@ -1,0 +1,52 @@
+---
+# Per-cluster `Gateway` listener + wildcard TLS cert. Separate from the
+# controller ApplicationSet so we can opt clusters into actually serving
+# traffic individually:
+#
+# - edge: in scope today (klipper-lb handles LB Service exposure).
+# - mgmt: deferred — rke2-ingress-nginx still owns 80/443 there; revisit
+#   when Rancher + Argo CD migrate to HTTPRoute (Phase 3) and MetalLB or
+#   an equivalent LB story lands.
+# - dev: not yet provisioned; add `- name: dev` here when it joins.
+#
+# Listed clusters must be registered with `argocd cluster add --name <name>`
+# beforehand so the cluster Secret exists. Sync-wave 3 so the GatewayClass
+# (wave 2) is established before the Gateway is applied.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: envoy-gateway-listener
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: edge
+  template:
+    metadata:
+      name: 'envoy-gateway-listener-{{ .name }}'
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/cruno91/homelab-gitops.git
+        targetRevision: main
+        path: platform/envoy-gateway/listener
+      destination:
+        name: '{{ .name }}'
+        namespace: envoy-gateway-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m

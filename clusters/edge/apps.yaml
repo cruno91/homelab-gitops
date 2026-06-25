@@ -1,4 +1,25 @@
-# Per-cluster Applications for `edge` (Pi K3s). Populated in Phase 2.
-apiVersion: v1
-kind: List
-items: []
+---
+# Per-cluster Applications for `edge` (Pi K3s). Pointed at apps/<name>/ paths.
+# Platform components (cert-manager, gateway-api, envoy-gateway) reach edge via
+# their own cluster-generator ApplicationSets in platform/, not from here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hello-world-edge
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cruno91/homelab-gitops.git
+    targetRevision: main
+    path: apps/hello-world
+  destination:
+    name: edge
+    namespace: hello-world
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
