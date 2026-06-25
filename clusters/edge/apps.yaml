@@ -1,7 +1,7 @@
 ---
 # Per-cluster Applications for `edge` (Pi K3s). Pointed at apps/<name>/ paths.
-# Platform components (cert-manager, gateway-api, envoy-gateway) reach edge via
-# their own cluster-generator ApplicationSets in platform/, not from here.
+# Platform components (cert-manager, envoy-gateway) reach edge via their own
+# cluster-generator ApplicationSets in platform/, not from here.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
