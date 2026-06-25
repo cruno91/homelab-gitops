@@ -15,6 +15,12 @@ spec:
           # sandbox-template is a baseline stamped onto ephemeral clusters, never applied directly
           - path: clusters/sandbox-template
             exclude: true
+          # dev cluster is provisioned in a later phase via CAPI + Harvester;
+          # the placeholder directory stays so the structure is visible, but
+          # we don't want a dev-bootstrap Application until the cluster exists.
+          # Remove this exclude when `argocd cluster add --name dev` lands.
+          - path: clusters/dev
+            exclude: true
   template:
     metadata:
       name: '{{.path.basename}}-bootstrap'
