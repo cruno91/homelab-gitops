@@ -20,6 +20,25 @@ configs:
   cm:
     application.instanceLabelKey: argocd.argoproj.io/instance
     timeout.reconciliation: 180s
+    # Suppress benign Synced=OutOfSync drift caused by CRD-schema defaults
+    # the API server fills in on apply but git doesn't list. Argo's diff
+    # logic for HTTPRoute and Gateway doesn't reconcile these on its own
+    # (VAPB does — handled via SSA managedFields stabilization without
+    # needing an entry here). Applies cluster-wide to the listed kinds, so
+    # any future HTTPRoute / Gateway resource is covered automatically.
+    # Drop a jqPathExpression only if the field starts mattering (e.g. you
+    # want to deliberately set backendRefs[].weight on an HTTPRoute).
+    resource.customizations.ignoreDifferences.gateway.networking.k8s.io_HTTPRoute: |
+      jqPathExpressions:
+        - .spec.parentRefs[].group
+        - .spec.parentRefs[].kind
+        - .spec.rules[].backendRefs[].group
+        - .spec.rules[].backendRefs[].kind
+        - .spec.rules[].backendRefs[].weight
+    resource.customizations.ignoreDifferences.gateway.networking.k8s.io_Gateway: |
+      jqPathExpressions:
+        - .spec.listeners[].tls.certificateRefs[].group
+        - .spec.listeners[].tls.certificateRefs[].kind
 
 dex:
   enabled: false
