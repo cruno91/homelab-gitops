@@ -1,0 +1,22 @@
+---
+# Wildcard cert for the Traefik Gateway's HTTPS listener. cert-manager
+# issues from the SelfSigned ClusterIssuer (transitional — step-ca lands
+# in a later phase and the issuerRef gets repointed then). The resulting
+# Secret `wildcard-yavin-internal-tls` is consumed by the Gateway's
+# websecure listener via certificateRefs (configured in the chart values
+# at ../appset.yaml).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-yavin-internal
+  namespace: traefik
+spec:
+  secretName: wildcard-yavin-internal-tls
+  commonName: "*.yavin.internal"
+  dnsNames:
+    - "yavin.internal"
+    - "*.yavin.internal"
+  issuerRef:
+    name: selfsigned
+    kind: ClusterIssuer
+    group: cert-manager.io

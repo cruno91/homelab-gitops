@@ -1,0 +1,110 @@
+---
+# Traefik as the Gateway API implementation on edge.
+#
+# Why Traefik vs Envoy Gateway: Envoy's distroless image bundles TCMalloc,
+# which assumes a 48-bit user virtual address space. The Raspberry Pi 4
+# nodes on edge run Raspberry Pi OS arm64 with CONFIG_ARM64_VA_BITS=39, so
+# Envoy CrashLoopBackOffs on every restart with `MmapAligned() failed` from
+# TCMalloc. Traefik is pure Go, has no TCMalloc dependency, and is the
+# original K3s default ingress for ARM-friendly reasons — it works fine on
+# the 39-bit VA kernel.
+#
+# Why list-generator (not cluster-generator): unlike Envoy Gateway, where
+# the controller alone bound no host ports, Traefik IS the data plane —
+# its Service of type LoadBalancer wants hostPort 80/443 via klipper-lb on
+# install. Running this on mgmt would collide with rke2-ingress-nginx, so
+# Traefik only lands on clusters with safe LB exposure today (edge). Add
+# `- name: dev` here when the dev cluster joins.
+#
+# The vendored Gateway API CRDs at platform/gateway-api/ are the source of
+# truth for the gateway.networking.k8s.io CRDs on every cluster; Traefik
+# does NOT ship its own copy (unlike Envoy Gateway, which forced us to
+# delete platform/gateway-api/ last time around).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: traefik
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: edge
+  template:
+    metadata:
+      name: 'traefik-{{ .name }}'
+      annotations:
+        # Standard Gateway API CRDs (platform/gateway-api/) sync at wave 0.
+        # Traefik watches Gateway/GatewayClass/HTTPRoute — install after CRDs.
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: default
+      sources:
+        - repoURL: ghcr.io/traefik/helm
+          chart: traefik
+          targetRevision: 41.0.0
+          helm:
+            releaseName: traefik
+            valuesObject:
+              providers:
+                # Enable the Gateway API provider — this is the whole point.
+                kubernetesGateway:
+                  enabled: true
+                # We standardize on Gateway API; opt out of legacy Ingress.
+                # Traefik IngressRoute CRDs (kubernetesCRD) stay enabled at
+                # default — they're a no-op unless someone creates one.
+                kubernetesIngress:
+                  enabled: false
+              gateway:
+                # Override the chart's default `traefik-gateway` to a stable,
+                # implementation-neutral name. HTTPRoutes reference this.
+                name: yavin
+                listeners:
+                  # Plaintext HTTP listener stays available for routes that
+                  # opt in (e.g. an HTTP→HTTPS redirect later). Chart-default
+                  # internal port; the Service maps 80 → web (8000) externally.
+                  web:
+                    port: 8000
+                    protocol: HTTP
+                    namespacePolicy:
+                      from: All
+                  # HTTPS listener; the wildcard cert below is provisioned by
+                  # cert-manager and lives in the same namespace as the
+                  # Gateway (the chart's release namespace, "traefik"). The
+                  # Service maps 443 → websecure (8443) externally.
+                  websecure:
+                    port: 8443
+                    protocol: HTTPS
+                    hostname: "*.yavin.internal"
+                    mode: Terminate
+                    certificateRefs:
+                      - kind: Secret
+                        name: wildcard-yavin-internal-tls
+                    namespacePolicy:
+                      from: All
+              # Chart-provided GatewayClass stays; it's the standard
+              # `traefik.io/gateway-controller` reference HTTPRoutes attach
+              # to via the Gateway. Default name = "traefik".
+              gatewayClass:
+                enabled: true
+        - repoURL: https://github.com/cruno91/homelab-gitops.git
+          targetRevision: main
+          path: platform/traefik/extras
+      destination:
+        name: '{{ .name }}'
+        namespace: traefik
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
