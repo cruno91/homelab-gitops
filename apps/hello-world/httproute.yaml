@@ -9,7 +9,7 @@ metadata:
 spec:
   parentRefs:
     - name: yavin
-      namespace: envoy-gateway-system
+      namespace: traefik
   hostnames:
     - hello.edge.yavin.internal
   rules:
