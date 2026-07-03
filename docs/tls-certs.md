@@ -285,5 +285,6 @@ If you're iterating, flip the `issuerRef` to `letsencrypt-staging` — those lim
 
 - [ADR-0001](./adr/0001-internal-only-no-public-exposure.md) — why the lab has no public inbound (drives the DNS-01 choice)
 - [ADR-0005](./adr/0005-secrets-sops-age.md) — SOPS + age (drives the encrypted-Secret-in-git choice)
-- [ADR-0006](./adr/0006-defer-real-tls-to-stepca-phase2.md) — historical; the step-ca route was abandoned in favor of LE + DNS-01
+- [ADR-0009](./adr/0009-letsencrypt-dns01-split-horizon.md) — the decision to use LE + DNS-01 (supersedes ADR-0006)
+- [ADR-0006](./adr/0006-defer-real-tls-to-stepca-phase2.md) — historical; the step-ca route the LE decision replaced
 - [`platform-layer.md`](./platform-layer.md) — what fans out what, and why
