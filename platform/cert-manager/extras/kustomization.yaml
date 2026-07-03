@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - selfsigned-clusterissuer.yaml
   - letsencrypt-staging-clusterissuer.yaml
+  - letsencrypt-prod-clusterissuer.yaml
 # KSOPS-decrypted resources are emitted by the generator, not listed here.
 # See ksops-generator.yaml for the file list.
 generators:
