@@ -2,3 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - selfsigned-clusterissuer.yaml
+  - letsencrypt-staging-clusterissuer.yaml
+# KSOPS-decrypted resources are emitted by the generator, not listed here.
+# See ksops-generator.yaml for the file list.
+generators:
+  - ksops-generator.yaml

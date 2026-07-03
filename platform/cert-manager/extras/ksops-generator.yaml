@@ -1,0 +1,17 @@
+---
+# KSOPS generator config — kustomize alpha exec plugin.
+#
+# Every *.enc.yaml file listed here is decrypted at manifest-generation time
+# by the ksops sidecar in argocd-repo-server. Add new encrypted files to
+# the `files:` list; unencrypted resources belong in kustomization.yaml
+# under `resources:` instead.
+#
+# apiVersion + kind must be exactly viaduct.ai/v1 + ksops — kustomize's
+# alpha-plugin loader derives the binary path from these
+# (<KUSTOMIZE_PLUGIN_HOME>/viaduct.ai/v1/ksops/ksops).
+apiVersion: viaduct.ai/v1
+kind: ksops
+metadata:
+  name: cert-manager-extras-generator
+files:
+  - ./cloudflare-token.enc.yaml

@@ -11,7 +11,7 @@ spec:
     - name: yavin
       namespace: traefik
   hostnames:
-    - hello.edge.yavin.internal
+    - hello.edge.wretchedhive.io
   rules:
     - matches:
         - path:
