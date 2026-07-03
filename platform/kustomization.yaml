@@ -7,6 +7,3 @@ resources:
   - cert-manager/appset.yaml
   - gateway-api/appset.yaml
   - traefik/appset.yaml
-  # Throwaway KSOPS smoketest — remove after LE + DNS-01 PR proves the
-  # decryption path via a real workload consumer (cloudflare-api-token).
-  - sops-smoketest/appset.yaml

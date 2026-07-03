@@ -38,6 +38,14 @@ spec:
         - repoURL: https://github.com/cruno91/homelab-gitops.git
           targetRevision: main
           path: platform/cert-manager/extras
+          # Force the ksops CMP sidecar to render this source. Without the
+          # explicit plugin, Argo's source auto-detection sees
+          # kustomization.yaml and runs its built-in kustomize (without
+          # --enable-alpha-plugins), which refuses the ksops external
+          # generator. Discover-based matching only fires when
+          # auto-detection can't classify. See [[ksops-wiring]].
+          plugin:
+            name: ksops
       destination:
         server: '{{ .server }}'
         namespace: cert-manager

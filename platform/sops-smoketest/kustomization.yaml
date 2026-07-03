@@ -1,8 +1,0 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-# The KSOPS CMP fires on this directory because test-secret.enc.yaml matches
-# the discover expression in bootstrap/argocd-values.yaml. Kustomize then
-# invokes the ksops generator declared below, which decrypts and yields the
-# real Secret manifest.
-generators:
-  - ksops-generator.yaml

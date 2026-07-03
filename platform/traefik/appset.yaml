@@ -77,11 +77,11 @@ spec:
                   websecure:
                     port: 8443
                     protocol: HTTPS
-                    hostname: "*.yavin.internal"
+                    hostname: "*.edge.wretchedhive.io"
                     mode: Terminate
                     certificateRefs:
                       - kind: Secret
-                        name: wildcard-yavin-internal-tls
+                        name: wildcard-edge-wretchedhive-io-tls
                     namespacePolicy:
                       from: All
               # Chart-provided GatewayClass stays; it's the standard

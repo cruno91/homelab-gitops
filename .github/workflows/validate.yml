@@ -133,6 +133,13 @@ jobs:
       # at; each platform/<component>/{extras,listener,manifests}/ is a path
       # referenced by an ApplicationSet template. apps/<name>/ is a workload
       # Application path. Catch kustomize errors in every layer before Argo.
+      #
+      # Skip dirs containing a ksops-generator.yaml: kustomize's exec-plugin
+      # loader here would try to invoke the ksops binary (not installed in CI)
+      # and would need the age key to decrypt (deliberately absent from CI).
+      # The KSOPS render path is validated in-cluster by argocd-repo-server's
+      # ksops CMP sidecar every sync. The secrets-check job above still
+      # enforces that any *.enc.yaml file is actually encrypted.
       - name: Kustomize build platform umbrella + every kustomized subdir
         run: |
           set -euo pipefail
@@ -142,6 +149,10 @@ jobs:
           fi
           for d in platform/*/extras/ platform/*/listener/ platform/*/manifests/ apps/*/; do
             [ -d "$d" ] && [ -f "$d/kustomization.yaml" ] || continue
+            if [ -f "$d/ksops-generator.yaml" ]; then
+              echo "=== $d (skipped: KSOPS-generated, rendered by argocd sidecar) ==="
+              continue
+            fi
             echo "=== $d ==="
             kubectl kustomize "$d" > /dev/null
           done

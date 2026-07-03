@@ -1,0 +1,43 @@
+---
+# Let's Encrypt staging ClusterIssuer using DNS-01 via Cloudflare.
+#
+# Why DNS-01: wretchedhive.io resolves publicly, but the cluster and its
+# workloads are internal-only. Pi-hole overrides DNS for *.wretchedhive.io
+# to LAN IPs (10.0.3.x). HTTP-01 would require LE's servers to reach the
+# cluster over the internet, which is exactly what we're not exposing.
+# DNS-01 sidesteps that: cert-manager writes a TXT record via the Cloudflare
+# API, LE validates it out-of-band, cert issues. No inbound path required.
+#
+# Why staging first: LE prod has strict rate limits (50 certs/week/domain).
+# The staging environment issues fake certs from an untrusted CA but uses
+# the same DNS-01 flow, so we validate the plumbing without burning quota.
+# Once we see a Certificate reach Ready with a staging cert, flip the
+# Certificate's issuerRef to a `letsencrypt-prod` ClusterIssuer in a
+# follow-up commit.
+#
+# Sync-wave 1 so cert-manager.io CRDs (wave 0, from the Helm chart) land
+# first. The Cloudflare API token Secret is delivered by the same source
+# (see ../extras/kustomization.yaml + ksops-generator.yaml).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: chris.runo@gmail.com
+    privateKeySecretRef:
+      # cert-manager creates this Secret to hold the ACME account private
+      # key. Namespace is cert-manager (its own namespace, per the
+      # ClusterIssuer scope). Don't confuse with cloudflare-api-token below.
+      name: letsencrypt-staging-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              # Delivered by cloudflare-token.enc.yaml in the same dir,
+              # decrypted by KSOPS at manifest-generation time.
+              name: cloudflare-api-token
+              key: api-token

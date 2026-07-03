@@ -1,22 +1,35 @@
 ---
-# Wildcard cert for the Traefik Gateway's HTTPS listener. cert-manager
-# issues from the SelfSigned ClusterIssuer (transitional — step-ca lands
-# in a later phase and the issuerRef gets repointed then). The resulting
-# Secret `wildcard-yavin-internal-tls` is consumed by the Gateway's
-# websecure listener via certificateRefs (configured in the chart values
-# at ../appset.yaml).
+# Wildcard cert for the Traefik Gateway's HTTPS listener.
+#
+# Issued by Let's Encrypt via DNS-01, using the Cloudflare API token
+# delivered to cert-manager as an encrypted Secret (see
+# platform/cert-manager/extras/cloudflare-token.enc.yaml).
+#
+# Naming: covers *.edge.wretchedhive.io — a per-cluster wildcard so cert
+# scope is aligned with cluster scope. Blast radius of a leak is one
+# cluster's set of hostnames, not the entire homelab. Mgmt gets its own
+# *.mgmt.wretchedhive.io cert in a follow-up.
+#
+# TLS wildcard matching (RFC 6125) is one label deep — *.edge.wretchedhive.io
+# matches hello.edge.wretchedhive.io but NOT foo.bar.edge.wretchedhive.io.
+# Keep hostnames flat under this level.
+#
+# Staging issuer first (fake CA, no rate limits) to validate the DNS-01
+# flow end-to-end. Once we observe a Certificate in Ready state with a
+# staging cert, flip issuerRef.name to `letsencrypt-prod` (defined in a
+# follow-up commit) — no other change needed.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: wildcard-yavin-internal
+  name: wildcard-edge-wretchedhive-io
   namespace: traefik
 spec:
-  secretName: wildcard-yavin-internal-tls
-  commonName: "*.yavin.internal"
+  secretName: wildcard-edge-wretchedhive-io-tls
+  commonName: "*.edge.wretchedhive.io"
   dnsNames:
-    - "yavin.internal"
-    - "*.yavin.internal"
+    - "edge.wretchedhive.io"
+    - "*.edge.wretchedhive.io"
   issuerRef:
-    name: selfsigned
+    name: letsencrypt-staging
     kind: ClusterIssuer
     group: cert-manager.io
