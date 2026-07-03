@@ -15,3 +15,8 @@ rules:
 ignore: |
   .github/
   platform/*/manifests/
+  # SOPS rewrites encrypted files with its own indentation (4-space) and
+  # inserts ciphertext blobs where structured YAML would go. Linting them
+  # is meaningless — CI already enforces they're encrypted via the
+  # "sops:" grep check in validate.yml.
+  **/*.enc.yaml

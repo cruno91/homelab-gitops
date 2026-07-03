@@ -45,3 +45,111 @@ dex:
 
 notifications:
   enabled: false
+
+# --- KSOPS Config Management Plugin --------------------------------------
+# Adds a sidecar to argocd-repo-server that decrypts SOPS-encrypted files
+# (`*.enc.yaml`) at manifest-generation time. Per ADR-0005, wired only once
+# a real encrypted secret needs to sync — that trigger is now: Cloudflare
+# API token storage for cert-manager Let's Encrypt DNS-01.
+#
+# Prerequisites (out-of-band, not in git):
+#   1. `sops-age` Secret in the `argocd` namespace with key `keys.txt`
+#      holding the age private key from ~/.config/sops/age/keys.txt.
+#      Loss of that Secret = loss of decryption ability across the cluster.
+#
+# The sidecar image tag MUST track the argo-cd chart's appVersion. When
+# `bootstrap/argocd-app.yaml`'s targetRevision is bumped, verify with:
+#   kubectl -n argocd get deploy argocd-repo-server \
+#     -o jsonpath='{.spec.template.spec.containers[0].image}'
+# and update `repoServer.extraContainers[0].image` below to match. A mismatch
+# risks socket / protocol drift between cmp-server and repo-server.
+repoServer:
+  env:
+    # Where the ksops sidecar looks for the age key file. The `sops-age`
+    # Secret is mounted at /.config/sops/age below.
+    - name: XDG_CONFIG_HOME
+      value: /.config
+  volumes:
+    - name: custom-tools
+      emptyDir: {}
+    - name: cmp-plugin
+      configMap:
+        name: cmp-plugin
+    - name: sops-age
+      secret:
+        secretName: sops-age
+  initContainers:
+    # Copies static ksops + kustomize binaries out of the ksops image into
+    # a shared volume the sidecar reads. Standalone image so the sidecar
+    # itself stays a plain argocd image (see version-pin caveat above).
+    - name: install-ksops
+      image: viaductoss/ksops:v4.3.3
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "Installing KSOPS..."
+          mv ksops-static /custom-tools/ksops
+          mv kustomize /custom-tools/kustomize
+          echo "Done."
+      volumeMounts:
+        - mountPath: /custom-tools
+          name: custom-tools
+  extraContainers:
+    - name: ksops
+      # Pin: matches argo-cd chart 9.5.21 appVersion. See comment above.
+      image: quay.io/argoproj/argocd:v3.4.3
+      command: [/var/run/argocd/argocd-cmp-server]
+      env:
+        - name: SOPS_AGE_KEY_FILE
+          value: /.config/sops/age/keys.txt
+        - name: XDG_CONFIG_HOME
+          value: /.config
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      volumeMounts:
+        # var-files, plugins, tmp are pod-scoped emptyDirs the chart already
+        # defines on repo-server; the sidecar shares them for the cmp-server
+        # unix socket and workdir.
+        - mountPath: /var/run/argocd
+          name: var-files
+        - mountPath: /home/argocd/cmp-server/plugins
+          name: plugins
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /custom-tools
+          name: custom-tools
+        - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: plugin.yaml
+          name: cmp-plugin
+        - mountPath: /.config/sops/age
+          name: sops-age
+
+# ConfigMap carrying the ksops CMP plugin definition. Delivered via the
+# chart's extraObjects so it stays alongside the argocd install and gets
+# reconciled with the rest of argocd-values.yaml.
+extraObjects:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: cmp-plugin
+      namespace: argocd
+    data:
+      plugin.yaml: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: ConfigManagementPlugin
+        metadata:
+          name: ksops
+        spec:
+          allowConcurrency: true
+          # Only route through KSOPS if the source directory actually
+          # contains a SOPS-encrypted file. Everywhere else the built-in
+          # kustomize path runs unchanged — no behavior shift for the
+          # platform components that already synced pre-KSOPS.
+          discover:
+            find:
+              command: [sh, -c, "find . -name '*.enc.yaml' | head -1"]
+          generate:
+            command: [/custom-tools/kustomize]
+            args: [build, --enable-alpha-plugins, --enable-exec, .]
+          lockRepo: false

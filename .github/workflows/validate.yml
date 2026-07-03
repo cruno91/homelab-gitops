@@ -39,6 +39,10 @@ jobs:
           #   definitions use newer apiextensions.k8s.io/v1 fields than the
           #   schema kubeconform ships; render job + the cluster itself catch
           #   real issues.
+          # - *.enc.yaml: SOPS-encrypted files carry a top-level `sops:` field
+          #   the plaintext-kind schema rejects (and ciphertext blobs where
+          #   real values would go). The secrets-check job separately verifies
+          #   they're actually encrypted.
           find_args=(
             bootstrap clusters platform apps
             -type f
@@ -46,14 +50,19 @@ jobs:
             ! -name 'kustomization.yaml' ! -name 'kustomization.yml'
             ! -name 'values.yaml' ! -name '*-values.yaml'
             ! -path 'platform/*/manifests/*'
+            ! -name '*.enc.yaml' ! -name '*.enc.yml'
           )
           count=$(find "${find_args[@]}" 2>/dev/null | wc -l | tr -d ' ')
           printf 'Validating %s files\n' "$count"
           if [ "$count" -eq 0 ]; then
             exit 0
           fi
+          # -skip ksops: viaduct.ai/v1 ksops is a kustomize exec-plugin config,
+          # not a Kubernetes CRD — it never gets applied to the cluster, so
+          # there's no schema to validate against.
           find "${find_args[@]}" -print0 2>/dev/null \
             | xargs -0 kubeconform -strict -summary \
+              -skip ksops \
               -schema-location default \
               -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
