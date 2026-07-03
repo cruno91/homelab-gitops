@@ -94,9 +94,13 @@ repoServer:
       command: ["/bin/sh", "-c"]
       args:
         - |
+          set -eu
           echo "Installing KSOPS..."
+          # Older KSOPS docs referenced `ksops-static`; the v4.3.x images
+          # ship a single statically-linked binary called just `ksops`
+          # (alongside kustomize) under WORKDIR /usr/local/bin.
           mkdir -p /custom-tools/plugins/viaduct.ai/v1/ksops
-          mv ksops-static /custom-tools/plugins/viaduct.ai/v1/ksops/ksops
+          mv ksops /custom-tools/plugins/viaduct.ai/v1/ksops/ksops
           mv kustomize /custom-tools/kustomize
           echo "Done."
       volumeMounts:
