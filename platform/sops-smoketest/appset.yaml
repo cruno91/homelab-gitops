@@ -26,6 +26,13 @@ spec:
         repoURL: https://github.com/cruno91/homelab-gitops.git
         targetRevision: main
         path: platform/sops-smoketest
+        # Force the ksops CMP sidecar to render this source. Without an
+        # explicit plugin, Argo's auto-detection sees kustomization.yaml
+        # and runs its built-in kustomize (without --enable-alpha-plugins),
+        # which refuses the ksops external generator. Discover-based
+        # matching only runs when auto-detection fails to classify.
+        plugin:
+          name: ksops
       destination:
         # In-cluster URL — mgmt is where the argocd controller runs and
         # therefore always reachable this way, no registered cluster Secret
