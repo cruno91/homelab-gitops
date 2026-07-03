@@ -1,0 +1,9 @@
+apiVersion: viaduct.ai/v1
+kind: ksops
+metadata:
+  name: sops-smoketest-generator
+# Each file listed here gets `sops -d`'d at kustomize-build time by the
+# ksops exec plugin the argocd-repo-server sidecar installs. The plugin
+# reads SOPS_AGE_KEY_FILE from env (mounted from the sops-age Secret).
+files:
+  - ./test-secret.enc.yaml

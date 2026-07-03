@@ -1,0 +1,40 @@
+---
+# Throwaway component: proves the KSOPS CMP path renders and applies an
+# encrypted Secret end-to-end. Delete this whole directory once verified.
+#
+# Targets mgmt only. This is not a fan-out component — the goal is a single
+# Application against a single cluster whose sync status tells us whether
+# KSOPS is wired correctly. The Secret it creates has no consumer.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: sops-smoketest
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: mgmt
+  template:
+    metadata:
+      name: 'sops-smoketest-{{ .name }}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/cruno91/homelab-gitops.git
+        targetRevision: main
+        path: platform/sops-smoketest
+      destination:
+        # In-cluster URL — mgmt is where the argocd controller runs and
+        # therefore always reachable this way, no registered cluster Secret
+        # required. See [[applicationset-mgmt-destination]] for context.
+        server: https://kubernetes.default.svc
+        namespace: default
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
