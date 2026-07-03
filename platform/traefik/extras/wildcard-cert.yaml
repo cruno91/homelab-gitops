@@ -14,10 +14,11 @@
 # matches hello.edge.wretchedhive.io but NOT foo.bar.edge.wretchedhive.io.
 # Keep hostnames flat under this level.
 #
-# Staging issuer first (fake CA, no rate limits) to validate the DNS-01
-# flow end-to-end. Once we observe a Certificate in Ready state with a
-# staging cert, flip issuerRef.name to `letsencrypt-prod` (defined in a
-# follow-up commit) — no other change needed.
+# Issued by letsencrypt-prod after DNS-01 flow was validated end-to-end
+# against letsencrypt-staging (both ClusterIssuers live in
+# platform/cert-manager/extras/). Swap issuerRef.name back to
+# letsencrypt-staging if debugging cert-manager or Cloudflare changes to
+# stay well clear of LE prod rate limits.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -30,6 +31,6 @@ spec:
     - "edge.wretchedhive.io"
     - "*.edge.wretchedhive.io"
   issuerRef:
-    name: letsencrypt-staging
+    name: letsencrypt-prod
     kind: ClusterIssuer
     group: cert-manager.io

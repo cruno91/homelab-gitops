@@ -1,0 +1,36 @@
+---
+# Let's Encrypt production ClusterIssuer using DNS-01 via Cloudflare.
+#
+# Enabled after `letsencrypt-staging` proved the DNS-01 plumbing end-to-end
+# (staging cert observed on *.edge.wretchedhive.io 2026-07-03). Same solver
+# config, different ACME URL, and a separate account private key so staging
+# and prod registrations don't collide.
+#
+# Rate limits worth knowing (LE prod):
+#   - 50 certs / registered domain / week (per exact hostname list — the
+#     wildcard cert is 1 against that quota, not one per SAN)
+#   - 300 new orders / account / 3h
+#   - 5 duplicate certs / 168h (identical hostname set)
+# The homelab issues rarely, so these aren't practical concerns — but flip
+# the referring Certificate back to staging before doing large-scale
+# hostname changes.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: chris.runo@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              # Same Secret as staging — delivered by
+              # cloudflare-token.enc.yaml in this dir.
+              name: cloudflare-api-token
+              key: api-token
