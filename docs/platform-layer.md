@@ -27,9 +27,11 @@ spec:
 
 **cert-manager is not itself a CA** — it's the automation layer that talks to CAs. The signing authority is a separate object called an `Issuer` (or `ClusterIssuer` for the cluster-scoped version). cert-manager supports many: Let's Encrypt, internal step-ca, HashiCorp Vault, AWS Private CA, or just "self-signed" for testing.
 
-**What's installed today is the foundation, not the payoff.** The cluster has cert-manager itself plus a `SelfSigned` ClusterIssuer. cert-manager can technically issue certs now, but only self-signed ones — which doesn't help browser warnings. The real value lands when step-ca arrives (see [ADR-0006](./adr/0006-defer-real-tls-to-stepca-phase2.md)) and a new ClusterIssuer is wired to it. At that point "browser-trusted internal TLS" becomes a one-resource change per service.
+**What's installed today:** cert-manager itself plus three `ClusterIssuer`s — `selfsigned` (kept for smoke tests and cert-manager's own webhook bootstrap), `letsencrypt-staging`, and `letsencrypt-prod`. The two LE issuers use DNS-01 validation via Cloudflare with an API token stored as a SOPS-encrypted Secret in git. That means "browser-trusted internal TLS" is now a one-resource change per service — the mechanism the original phase plan (see [ADR-0006](./adr/0006-defer-real-tls-to-stepca-phase2.md)) reserved for step-ca lands via LE instead, without deploying an internal CA and without ever exposing the cluster publicly. Split-horizon DNS (Pi-hole authoritative for LAN clients, no public A records) keeps every service LAN-only; only DNS-01 TXT challenge records touch public DNS, and only while cert-manager is writing them.
 
-cert-manager is also a dependency for several other Phase 2 things (Gateway API webhook certs, observability TLS, etc.), which is why it's the foundation that goes in first.
+Day-to-day cert operations — getting new certs, rotating the Cloudflare token, flipping between staging and prod, diagnosing stalls — live in [`tls-certs.md`](./tls-certs.md).
+
+cert-manager is also a dependency for other things (Gateway API webhook certs, observability TLS, etc.), which is why it's the foundation that goes in first.
 
 ## The fan-out problem (and why ApplicationSets exist)
 
@@ -76,6 +78,19 @@ This is sometimes called the **app-of-appsets pattern**. The umbrella exists so 
 The directory itself. `platform/kustomization.yaml` is the umbrella's index — it lists every `<component>/appset.yaml` as a resource. Adding a new platform component (Harbor, observability, step-ca, …) is just dropping a file into `platform/<new-component>/appset.yaml` and adding it to the umbrella — `platform-mgmt` picks it up on next reconcile, creates the new ApplicationSet on mgmt, which fans the per-cluster Applications out. No per-cluster Git edits.
 
 Generator choice per component is just about scope. `cert-manager/appset.yaml` uses a cluster generator because cert-manager belongs on every cluster. `traefik/appset.yaml` uses a list generator (`elements: [{name: edge}]`) because Traefik is the ingress data plane on edge today and would conflict with mgmt's `rke2-ingress-nginx` for hostPort 80/443. Add or remove a cluster from the list, and Argo stamps or prunes the matching Application — the pattern handles both fan-out shapes.
+
+### Encrypted resources in `extras/` (KSOPS CMP)
+
+Some `extras/` sources need to ship secrets — e.g. `platform/cert-manager/extras/cloudflare-token.enc.yaml` carries the Cloudflare API token cert-manager uses for LE DNS-01. Committing plaintext isn't an option (see [ADR-0005](./adr/0005-secrets-sops-age.md)), so those files are SOPS-encrypted and decrypted at manifest-generation time by a KSOPS Config Management Plugin sidecar in `argocd-repo-server`.
+
+The wiring lives in `bootstrap/argocd-values.yaml` — a `sops-age` Secret with the age private key, an init container that lays out the `ksops` binary at the path kustomize's alpha-plugin loader expects, and a sidecar running `argocd-cmp-server` with a `plugin.yaml` whose `discover.find` fires on any `*.enc.yaml` presence.
+
+Two things to remember when adding an encrypted file to a `platform/<component>/extras/`:
+
+1. Alongside the `.enc.yaml`, drop a `ksops-generator.yaml` listing it under `files:`, and reference the generator from the local `kustomization.yaml` under `generators:`.
+2. On the Application source that points at that `extras/` (usually the second source in a multi-source appset template), set `source.plugin.name: ksops` explicitly. Argo's built-in source auto-detection sees `kustomization.yaml` and runs its own kustomize (which refuses external plugins) unless the plugin is bound by name — the `discover.find` fallback only fires when auto-detection can't classify the source.
+
+Full workflow (create → encrypt → commit → verify) in [`tls-certs.md`](./tls-certs.md).
 
 ## The chain, end-to-end
 
