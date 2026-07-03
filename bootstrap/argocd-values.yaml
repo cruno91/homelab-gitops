@@ -82,13 +82,21 @@ repoServer:
     # Copies static ksops + kustomize binaries out of the ksops image into
     # a shared volume the sidecar reads. Standalone image so the sidecar
     # itself stays a plain argocd image (see version-pin caveat above).
+    #
+    # ksops is an "alpha exec plugin" — kustomize's alpha-plugin loader
+    # requires the binary at a specific relative path under the plugin
+    # root: <root>/<apiVersion-group>/<apiVersion-version>/<kind>/<kind>.
+    # For the ksops generator we declare (viaduct.ai/v1, kind: ksops),
+    # that path is viaduct.ai/v1/ksops/ksops. The sidecar's
+    # KUSTOMIZE_PLUGIN_HOME env below points at /custom-tools/plugins.
     - name: install-ksops
       image: viaductoss/ksops:v4.3.3
       command: ["/bin/sh", "-c"]
       args:
         - |
           echo "Installing KSOPS..."
-          mv ksops-static /custom-tools/ksops
+          mkdir -p /custom-tools/plugins/viaduct.ai/v1/ksops
+          mv ksops-static /custom-tools/plugins/viaduct.ai/v1/ksops/ksops
           mv kustomize /custom-tools/kustomize
           echo "Done."
       volumeMounts:
@@ -104,6 +112,12 @@ repoServer:
           value: /.config/sops/age/keys.txt
         - name: XDG_CONFIG_HOME
           value: /.config
+        # Where kustomize --enable-alpha-plugins looks for exec plugins.
+        # The install-ksops init container above lays out the ksops binary
+        # under this root at viaduct.ai/v1/ksops/ksops (the path kustomize
+        # derives from the generator's apiVersion + kind).
+        - name: KUSTOMIZE_PLUGIN_HOME
+          value: /custom-tools/plugins
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
