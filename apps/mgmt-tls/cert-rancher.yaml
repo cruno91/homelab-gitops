@@ -1,0 +1,34 @@
+---
+# mgmt-plane wildcard cert for RANCHER's ingress (ADR-0009, plan v2 W1, Phase 4).
+#
+# WRITTEN AND REVIEWED IN PHASE 2, BUT INTENTIONALLY NOT SYNCED UNTIL THE
+# PHASE 4 WINDOW. It is deliberately absent from kustomization.yaml. Do not add
+# it there until Phase 4.
+#
+# Why the delay (ordering constraint, see docs/runbooks/mgmt-tls-migration.md):
+# with ingress.tls.source=secret the Rancher chart HARDCODES the ingress secret
+# name `tls-rancher-ingress`, which is currently owned by the chart's own
+# self-signed Certificate (Issuer `rancher`, cattle-system). Two Certificates
+# must never target that secret at once. The Phase 4 helm upgrade removes the
+# chart's Certificate/Issuer and orphans the secret; only THEN does this
+# Certificate merge in and cert-manager overwrite the orphaned secret in place
+# (ingress-nginx hot-reloads it).
+#
+# Goes straight to letsencrypt-prod: the resource shape is already proven on
+# staging via cert-argocd.yaml in Phase 2, and both certs share this SAN set.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: rancher-mgmt-wretchedhive-io
+  namespace: cattle-system
+spec:
+  # MUST be exactly this name — the Rancher chart hardcodes it for source=secret.
+  secretName: tls-rancher-ingress
+  commonName: "*.mgmt.wretchedhive.io"
+  dnsNames:
+    - "mgmt.wretchedhive.io"
+    - "*.mgmt.wretchedhive.io"
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
