@@ -24,3 +24,32 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+---
+# mgmt-only Let's Encrypt Certificates for the mgmt plane (ADR-0009, plan v2 W1).
+# Kept here rather than platform/cert-manager/extras/ because that source is
+# fanned out to EVERY registered cluster by the cert-manager ApplicationSet —
+# these certs are mgmt-only (D1, 2026-07-10). Interim home: W2 moves mgmt TLS
+# termination to Traefik and this relocates to extras/mgmt/.
+# Currently syncs only the argocd-namespace cert; the cattle-system cert is
+# staged in apps/mgmt-tls/cert-rancher.yaml but excluded from its kustomization
+# until the Phase 4 Rancher cutover.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mgmt-tls
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cruno91/homelab-gitops.git
+    targetRevision: main
+    path: apps/mgmt-tls
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

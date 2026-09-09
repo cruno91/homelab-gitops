@@ -1,0 +1,32 @@
+---
+# mgmt-plane wildcard cert for Argo CD's ingress (ADR-0009, plan v2 W1, Phase 2/3).
+#
+# Lives in the argocd namespace so cert-manager writes the secret next to its
+# consumer — the argocd-server Ingress that Phase 3 flips to
+# argocd.mgmt.wretchedhive.io / tls.source=secret. Modeled on the edge wildcard
+# (platform/traefik/extras/wildcard-cert.yaml).
+#
+# Per-cluster wildcard: *.mgmt.wretchedhive.io — scope aligned to the mgmt
+# cluster. This is the FIRST consumer of the mgmt wildcard and the one that
+# proves LE issuance end-to-end (the cattle-system copy in cert-rancher.yaml
+# shares the same SAN set and is therefore an LE "duplicate" — issue on staging
+# here first, flip to prod only once READY=True; see docs/tls-certs.md rate
+# limits).
+#
+# issuerRef starts at letsencrypt-staging (Phase 2.2). Flip to letsencrypt-prod
+# in Phase 2.3 after the staging cert reports READY=True.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-mgmt-wretchedhive-io
+  namespace: argocd
+spec:
+  secretName: argocd-mgmt-tls
+  commonName: "*.mgmt.wretchedhive.io"
+  dnsNames:
+    - "mgmt.wretchedhive.io"
+    - "*.mgmt.wretchedhive.io"
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io

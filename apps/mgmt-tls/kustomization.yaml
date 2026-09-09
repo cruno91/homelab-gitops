@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cert-argocd.yaml
+  # cert-rancher.yaml is intentionally NOT listed until the Phase 4 window —
+  # it targets the chart-owned `tls-rancher-ingress` secret and must not be
+  # synced before the Rancher helm upgrade orphans it. See cert-rancher.yaml.
