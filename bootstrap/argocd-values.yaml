@@ -1,16 +1,24 @@
 global:
-  domain: argocd.yavin.internal
+  # Drives the server ingress hostname AND the `url` in argocd-cm that the UI uses
+  # for self-links — one value covers both, so no configs.cm.url override is needed.
+  domain: argocd.mgmt.wretchedhive.io
 
 server:
-  # Pi-hole round-robins argocd.yavin.internal to the three RKE2 nodes;
+  # Pi-hole round-robins argocd.mgmt.wretchedhive.io to the three RKE2 nodes;
   # rke2-ingress-nginx on each hostPort 443 terminates TLS at the ingress.
-  # argocd-server speaks plain HTTP behind it.
+  # argocd-server speaks plain HTTP behind it (configs.params.server.insecure).
   service:
     type: ClusterIP
   ingress:
     enabled: true
     ingressClassName: nginx
-    hostname: argocd.yavin.internal
+    hostname: argocd.mgmt.wretchedhive.io
+    # `tls: true` adds a TLS block to the ingress referencing the chart's hardcoded
+    # secret name `argocd-server-tls` — populated by the LE prod Certificate in
+    # apps/mgmt-tls/cert-argocd.yaml (ADR-0009 Phase 3, decision D4 option A).
+    # That Certificate must be READY before this lands, or nginx serves its default
+    # self-signed cert. Verified Ready on LE prod 2026-09-08 (revision 3).
+    tls: true
     annotations:
       nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 
@@ -30,15 +38,15 @@ configs:
     # want to deliberately set backendRefs[].weight on an HTTPRoute).
     resource.customizations.ignoreDifferences.gateway.networking.k8s.io_HTTPRoute: |
       jqPathExpressions:
-        - .spec.parentRefs[].group
-        - .spec.parentRefs[].kind
-        - .spec.rules[].backendRefs[].group
-        - .spec.rules[].backendRefs[].kind
-        - .spec.rules[].backendRefs[].weight
+        - .spec.parentRefs[]?.group
+        - .spec.parentRefs[]?.kind
+        - .spec.rules[]?.backendRefs[]?.group
+        - .spec.rules[]?.backendRefs[]?.kind
+        - .spec.rules[]?.backendRefs[]?.weight
     resource.customizations.ignoreDifferences.gateway.networking.k8s.io_Gateway: |
       jqPathExpressions:
-        - .spec.listeners[].tls.certificateRefs[].group
-        - .spec.listeners[].tls.certificateRefs[].kind
+        - .spec.listeners[]?.tls.certificateRefs[]?.group
+        - .spec.listeners[]?.tls.certificateRefs[]?.kind
 
 dex:
   enabled: false
