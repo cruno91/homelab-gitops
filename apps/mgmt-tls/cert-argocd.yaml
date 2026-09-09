@@ -13,8 +13,10 @@
 # here first, flip to prod only once READY=True; see docs/tls-certs.md rate
 # limits).
 #
-# issuerRef starts at letsencrypt-staging (Phase 2.2). Flip to letsencrypt-prod
-# in Phase 2.3 after the staging cert reports READY=True.
+# issuerRef was letsencrypt-staging for Phase 2.2; staging issued cleanly
+# (READY=True 2026-09-08, both SANs present), so Phase 2.3 flipped it to
+# letsencrypt-prod. cert-manager reissues on the issuerRef change and
+# overwrites the argocd-mgmt-tls secret in place.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -27,6 +29,6 @@ spec:
     - "mgmt.wretchedhive.io"
     - "*.mgmt.wretchedhive.io"
   issuerRef:
-    name: letsencrypt-staging
+    name: letsencrypt-prod
     kind: ClusterIssuer
     group: cert-manager.io
