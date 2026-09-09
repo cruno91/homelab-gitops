@@ -16,14 +16,22 @@
 # issuerRef was letsencrypt-staging for Phase 2.2; staging issued cleanly
 # (READY=True 2026-09-08, both SANs present), so Phase 2.3 flipped it to
 # letsencrypt-prod. cert-manager reissues on the issuerRef change and
-# overwrites the argocd-mgmt-tls secret in place.
+# overwrites the target secret in place.
+#
+# secretName is `argocd-server-tls` (Phase 3, decision D4 = option A): the argo-cd
+# chart's `server.ingress.tls: true` resolves the ingress cert to exactly that name,
+# and it is also the name argocd-server itself reads for its own TLS. Safe to own here
+# because the chart's `server.certificateSecret.enabled` is false (it creates no such
+# secret) and `server.insecure: true` means argocd-server serves plain HTTP behind
+# nginx. This Certificate must be Ready BEFORE the values change points the ingress
+# at it — same ordering rule as Rancher's tls-rancher-ingress in Phase 4.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: argocd-mgmt-wretchedhive-io
   namespace: argocd
 spec:
-  secretName: argocd-mgmt-tls
+  secretName: argocd-server-tls
   commonName: "*.mgmt.wretchedhive.io"
   dnsNames:
     - "mgmt.wretchedhive.io"
