@@ -37,7 +37,22 @@ That's it. Wildcard matching (RFC 6125) is one label deep, so `harbor.edge.wretc
 
 ## Getting a cert for a new hostname on the mgmt plane
 
-Once the mgmt-plane migration lands (`*.mgmt.wretchedhive.io`), the same pattern applies with the mgmt wildcard. Until then, mgmt still uses `*.yavin.internal` with the in-cluster self-signed cert from `rke2-ingress-nginx` — no LE involvement.
+**Partially migrated as of 2026-09-08 (ADR-0009 W1, Phases 2–3).** The mgmt wildcard
+`*.mgmt.wretchedhive.io` is live on **LE prod** and the same pattern as the edge wildcard
+now applies — the `Certificate` lives in `apps/mgmt-tls/`, synced to the mgmt cluster only
+by the `mgmt-tls` Application in `clusters/mgmt/apps.yaml` (deliberately *not* in
+`platform/cert-manager/extras/`, which fans out to every registered cluster).
+
+- **Argo CD — migrated.** Serves `https://argocd.mgmt.wretchedhive.io`; cert in secret
+  `argocd-server-tls` (the name the argo-cd chart hardcodes for `server.ingress.tls: true`).
+- **Rancher — not yet.** Still `rancher.yavin.internal` on the in-cluster self-signed
+  dynamiclistener cert from `rke2-ingress-nginx`, with downstream agents pinned via
+  `CATTLE_CA_CHECKSUM`. That is Phase 4; see
+  [the migration runbook](./runbooks/mgmt-tls-migration.md).
+
+**Rate-limit note:** both mgmt certs share the SAN set
+{`mgmt.wretchedhive.io`, `*.mgmt.wretchedhive.io`}, so LE counts them as *duplicates* of
+each other against the 5-per-week ceiling. 2 of 5 used as of 2026-09-08.
 
 ## Getting a wildcard cert for a new cluster (same domain)
 
