@@ -2,6 +2,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - cert-argocd.yaml
-  # cert-rancher.yaml is intentionally NOT listed until the Phase 4 window —
-  # it targets the chart-owned `tls-rancher-ingress` secret and must not be
-  # synced before the Rancher helm upgrade orphans it. See cert-rancher.yaml.
+  # Added 2026-09-09 INSIDE the Phase 4 window, after the Rancher helm upgrade
+  # released the `tls-rancher-ingress` secret name. Preconditions that were
+  # verified before this line was merged (see docs/runbooks/mgmt-tls-migration.md
+  # step 2b — the original plan was wrong about the mechanism here):
+  #   1. The play ran with ingress.tls.source=secret, so helm removed
+  #      `Issuer/rancher`.
+  #   2. `Certificate/tls-rancher-ingress` (NOT helm-owned — auto-created by
+  #      cert-manager's ingress-shim via the `cert-manager.io/issuer` annotation
+  #      the upgrade removes) is confirmed GONE. Two Certificates targeting the
+  #      same secret will fight, each overwriting the other.
+  - cert-rancher.yaml
