@@ -1,0 +1,31 @@
+---
+# Argo CD on the shared `yavin` Gateway (plan v2 W2), replacing the
+# chart-managed Ingress. `bootstrap/argocd-values.yaml` disables that Ingress in
+# the same window.
+#
+# backendRef port 80 is argocd-server's plain-HTTP port; `configs.params.
+# server.insecure: true` is already set, so argocd-server does not also try to
+# terminate TLS. Traefik does it at the Gateway listener.
+#
+# Carries gRPC-web for the `argocd` CLI. Reads (`app list`) can succeed over a
+# path where a long-lived streaming call fails, so verify with an actual
+# `argocd app sync`, not just a login — that distinction bit W1.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  parentRefs:
+    - name: yavin
+      namespace: traefik
+  hostnames:
+    - argocd.mgmt.wretchedhive.io
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: argocd-server
+          port: 80

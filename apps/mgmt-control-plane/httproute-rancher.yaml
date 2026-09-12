@@ -1,0 +1,38 @@
+---
+# Rancher on the shared `yavin` Gateway (plan v2 W2), replacing the
+# chart-managed Ingress that rke2-ingress-nginx served.
+#
+# Lives in cattle-system (the consumer's namespace) with a cross-namespace
+# parentRef to the Gateway in `traefik` — same shape as apps/hello-world's
+# route on edge. The Gateway's listeners are `allowedRoutes.namespaces.from: All`,
+# so no ReferenceGrant is needed for the parentRef.
+#
+# backendRef port 80 is Rancher's plain-HTTP port: Traefik terminates TLS at the
+# `websecure` listener using the *.mgmt.wretchedhive.io wildcard, and speaks
+# HTTP to the pod. That requires the Rancher chart to run with
+# `tls: external` + `networkExposure.type: none` (homelab-ansible vars
+# rancher_tls_mode / rancher_network_exposure) — flip those in the same window.
+#
+# Carries the websocket path /v3/connect used by every downstream
+# cattle-cluster-agent. Traefik proxies websockets without extra config, but
+# verify after cutover: a silent websocket failure looks like "agents
+# disconnected" with no obvious cause.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: rancher
+  namespace: cattle-system
+spec:
+  parentRefs:
+    - name: yavin
+      namespace: traefik
+  hostnames:
+    - rancher.mgmt.wretchedhive.io
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: rancher
+          port: 80

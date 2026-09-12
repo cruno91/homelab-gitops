@@ -147,7 +147,7 @@ jobs:
             echo "=== platform/ ==="
             kubectl kustomize platform > /dev/null
           fi
-          for d in platform/*/extras/ platform/*/listener/ platform/*/manifests/ apps/*/; do
+          for d in platform/*/extras/ platform/*/extras/*/ platform/*/listener/ platform/*/manifests/ apps/*/; do
             [ -d "$d" ] && [ -f "$d/kustomization.yaml" ] || continue
             if [ -f "$d/ksops-generator.yaml" ]; then
               echo "=== $d (skipped: KSOPS-generated, rendered by argocd sidecar) ==="

@@ -53,3 +53,32 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+---
+# HTTPRoutes for the mgmt control planes (plan v2 W2). Replaces the
+# chart-managed Ingresses that rke2-ingress-nginx served.
+#
+# DO NOT MERGE THIS BEFORE THE CUTOVER WINDOW. The routes attach to the `yavin`
+# Gateway, which does not exist on mgmt until traefik-mgmt syncs — and Traefik
+# cannot bind its hostPorts until rke2-ingress-nginx is disabled. Merging early
+# leaves routes dangling against a Gateway that is not Programmed.
+# Ordering: docs/runbooks/mgmt-httproute-migration.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mgmt-control-plane
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cruno91/homelab-gitops.git
+    targetRevision: main
+    path: apps/mgmt-control-plane
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

@@ -1,25 +1,29 @@
 ---
-# Traefik as the Gateway API implementation on edge.
+# Traefik + Gateway API data plane, per cluster.
 #
-# Why Traefik vs Envoy Gateway: Envoy's distroless image bundles TCMalloc,
-# which assumes a 48-bit user virtual address space. The Raspberry Pi 4
-# nodes on edge run Raspberry Pi OS arm64 with CONFIG_ARM64_VA_BITS=39, so
-# Envoy CrashLoopBackOffs on every restart with `MmapAligned() failed` from
-# TCMalloc. Traefik is pure Go, has no TCMalloc dependency, and is the
-# original K3s default ingress for ARM-friendly reasons — it works fine on
-# the 39-bit VA kernel.
+# A LIST generator rather than the cluster generator used by other platform
+# components (ADR-0008): Traefik is not wanted on every registered cluster, and
+# the two clusters that do run it need materially different exposure. Adding a
+# cluster here is a deliberate act.
 #
-# Why list-generator (not cluster-generator): unlike Envoy Gateway, where
-# the controller alone bound no host ports, Traefik IS the data plane —
-# its Service of type LoadBalancer wants hostPort 80/443 via klipper-lb on
-# install. Running this on mgmt would collide with rke2-ingress-nginx, so
-# Traefik only lands on clusters with safe LB exposure today (edge). Add
-# `- name: dev` here when the dev cluster joins.
+# Per-cluster divergence lives in the generator ELEMENTS, not in forked
+# ApplicationSets — see ADR-0010:
 #
-# The vendored Gateway API CRDs at platform/gateway-api/ are the source of
-# truth for the gateway.networking.k8s.io CRDs on every cluster; Traefik
-# does NOT ship its own copy (unlike Envoy Gateway, which forced us to
-# delete platform/gateway-api/ last time around).
+#   edge — K3s bundles klipper-lb (`servicelb`), so a LoadBalancer Service gets
+#          an EXTERNAL-IP and klipper opens 80/443 on every node itself. Traefik
+#          must NOT bind hostPorts here or it collides with klipper.
+#   mgmt — RKE2 ships no service load balancer, so a LoadBalancer Service would
+#          sit <pending> forever. Traefik runs as a DaemonSet binding hostPorts
+#          80/443 directly, reproducing rke2-ingress-nginx's exposure model so
+#          the existing Pi-hole round-robin A records keep working unchanged.
+#
+# `values` is a templated STRING rather than `valuesObject` specifically so the
+# hostPort block can be conditional — the Traefik chart treats `hostPort: null`
+# as "no hostPort", and there is no scalar that means "omit me" inside a
+# structured valuesObject. Same style the cert-manager appset already uses.
+#
+# NOTE goTemplateOptions has missingkey=error: every key referenced below must
+# be present on EVERY element.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -32,12 +36,21 @@ spec:
     - list:
         elements:
           - name: edge
+            wildcardHostname: "*.edge.wretchedhive.io"
+            wildcardSecret: wildcard-edge-wretchedhive-io-tls
+            deploymentKind: Deployment
+            serviceType: LoadBalancer
+            hostPorts: false
+          - name: mgmt
+            wildcardHostname: "*.mgmt.wretchedhive.io"
+            wildcardSecret: wildcard-mgmt-wretchedhive-io-tls
+            deploymentKind: DaemonSet
+            serviceType: ClusterIP
+            hostPorts: true
   template:
     metadata:
       name: 'traefik-{{ .name }}'
       annotations:
-        # Standard Gateway API CRDs (platform/gateway-api/) sync at wave 0.
-        # Traefik watches Gateway/GatewayClass/HTTPRoute — install after CRDs.
         argocd.argoproj.io/sync-wave: "1"
     spec:
       project: default
@@ -47,53 +60,62 @@ spec:
           targetRevision: 41.0.0
           helm:
             releaseName: traefik
-            valuesObject:
+            values: |
               providers:
-                # Enable the Gateway API provider — this is the whole point.
                 kubernetesGateway:
                   enabled: true
-                # We standardize on Gateway API; opt out of legacy Ingress.
-                # Traefik IngressRoute CRDs (kubernetesCRD) stay enabled at
-                # default — they're a no-op unless someone creates one.
                 kubernetesIngress:
                   enabled: false
+              deployment:
+                kind: {{ .deploymentKind }}
+              service:
+                # NOTE: the Service type lives at service.spec.type in this chart,
+                # NOT service.type. Setting the latter is silently ignored and you
+                # get the chart default (LoadBalancer) — caught by rendering.
+                spec:
+                  type: {{ .serviceType }}
+              ports:
+                web:
+                  port: 8000
+                  {{- if .hostPorts }}
+                  hostPort: 80
+                  {{- end }}
+                websecure:
+                  port: 8443
+                  {{- if .hostPorts }}
+                  hostPort: 443
+                  {{- end }}
               gateway:
-                # Override the chart's default `traefik-gateway` to a stable,
-                # implementation-neutral name. HTTPRoutes reference this.
                 name: yavin
                 listeners:
-                  # Plaintext HTTP listener stays available for routes that
-                  # opt in (e.g. an HTTP→HTTPS redirect later). Chart-default
-                  # internal port; the Service maps 80 → web (8000) externally.
                   web:
                     port: 8000
                     protocol: HTTP
                     namespacePolicy:
                       from: All
-                  # HTTPS listener; the wildcard cert below is provisioned by
-                  # cert-manager and lives in the same namespace as the
-                  # Gateway (the chart's release namespace, "traefik"). The
-                  # Service maps 443 → websecure (8443) externally.
                   websecure:
                     port: 8443
                     protocol: HTTPS
-                    hostname: "*.edge.wretchedhive.io"
+                    hostname: "{{ .wildcardHostname }}"
                     mode: Terminate
                     certificateRefs:
                       - kind: Secret
-                        name: wildcard-edge-wretchedhive-io-tls
+                        name: {{ .wildcardSecret }}
                     namespacePolicy:
                       from: All
-              # Chart-provided GatewayClass stays; it's the standard
-              # `traefik.io/gateway-controller` reference HTTPRoutes attach
-              # to via the Gateway. Default name = "traefik".
               gatewayClass:
                 enabled: true
         - repoURL: https://github.com/cruno91/homelab-gitops.git
           targetRevision: main
-          path: platform/traefik/extras
+          path: 'platform/traefik/extras/{{ .name }}'
       destination:
-        name: '{{ .name }}'
+        # ADR-0007: Argo's in-cluster connection is named `in-cluster`, not `mgmt`,
+        # and mgmt is NOT registered as a named cluster — verified 2026-09-11, the
+        # only cluster Secret is `edge`. So mgmt must be targeted by SERVER URL
+        # while edge is targeted by NAME. Argo treats an empty-string `server` or
+        # `name` as "not set" and uses whichever sibling is populated.
+        server: '{{ if eq .name "mgmt" }}https://kubernetes.default.svc{{ end }}'
+        name: '{{ if ne .name "mgmt" }}{{ .name }}{{ end }}'
         namespace: traefik
       syncPolicy:
         automated:
