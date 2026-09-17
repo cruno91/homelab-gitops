@@ -1,0 +1,29 @@
+---
+# mgmt-plane wildcard for Traefik's Gateway `websecure` listener (plan v2 W2).
+#
+# Lives in the `traefik` namespace because Gateway API resolves
+# `certificateRefs` relative to the Gateway's own namespace, and the `yavin`
+# Gateway is chart-managed in `traefik`. A cross-namespace ref would need a
+# ReferenceGrant for no benefit.
+#
+# NOTE — this is a THIRD copy of the same SAN set. W1 already issued
+# `argocd-server-tls` (ns argocd) and `tls-rancher-ingress` (ns cattle-system)
+# for the ingress-nginx world. Let's Encrypt counts identical SAN sets as
+# *duplicates* against a 5-per-week ceiling; 3 were used 2026-09-08/09. Check
+# headroom before merging, and delete the two superseded certs during W2
+# cleanup once nothing references them.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-mgmt-wretchedhive-io
+  namespace: traefik
+spec:
+  secretName: wildcard-mgmt-wretchedhive-io-tls
+  commonName: "*.mgmt.wretchedhive.io"
+  dnsNames:
+    - "mgmt.wretchedhive.io"
+    - "*.mgmt.wretchedhive.io"
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io

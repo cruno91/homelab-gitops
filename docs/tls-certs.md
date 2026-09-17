@@ -37,22 +37,30 @@ That's it. Wildcard matching (RFC 6125) is one label deep, so `harbor.edge.wretc
 
 ## Getting a cert for a new hostname on the mgmt plane
 
-**Partially migrated as of 2026-09-08 (ADR-0009 W1, Phases 2–3).** The mgmt wildcard
-`*.mgmt.wretchedhive.io` is live on **LE prod** and the same pattern as the edge wildcard
-now applies — the `Certificate` lives in `apps/mgmt-tls/`, synced to the mgmt cluster only
-by the `mgmt-tls` Application in `clusters/mgmt/apps.yaml` (deliberately *not* in
-`platform/cert-manager/extras/`, which fans out to every registered cluster).
+**Fully migrated as of 2026-09-09 (ADR-0009 W1, Phases 2–4).** The mgmt wildcard
+`*.mgmt.wretchedhive.io` is live on **LE prod** and the same pattern as the edge wildcard applies —
+the `Certificate` lives in `apps/mgmt-tls/`, synced to the mgmt cluster only by the `mgmt-tls`
+Application in `clusters/mgmt/apps.yaml` (deliberately *not* in `platform/cert-manager/extras/`,
+which fans out to every registered cluster).
 
-- **Argo CD — migrated.** Serves `https://argocd.mgmt.wretchedhive.io`; cert in secret
-  `argocd-server-tls` (the name the argo-cd chart hardcodes for `server.ingress.tls: true`).
-- **Rancher — not yet.** Still `rancher.yavin.internal` on the in-cluster self-signed
-  dynamiclistener cert from `rke2-ingress-nginx`, with downstream agents pinned via
-  `CATTLE_CA_CHECKSUM`. That is Phase 4; see
-  [the migration runbook](./runbooks/mgmt-tls-migration.md).
+| Consumer | Hostname | Secret | Note |
+|---|---|---|---|
+| Argo CD | `argocd.mgmt.wretchedhive.io` | `argocd-server-tls` | name hardcoded by the argo-cd chart for `server.ingress.tls: true` |
+| Rancher | `rancher.mgmt.wretchedhive.io` | `tls-rancher-ingress` | name hardcoded by the Rancher chart for `ingress.tls.source: secret` |
 
-**Rate-limit note:** both mgmt certs share the SAN set
-{`mgmt.wretchedhive.io`, `*.mgmt.wretchedhive.io`}, so LE counts them as *duplicates* of
-each other against the 5-per-week ceiling. 2 of 5 used as of 2026-09-08.
+Both verify with no `-k` (`http=200 verify=0`). Downstream Rancher agents validate against the
+public LE chain with `agent-tls-mode: system-store` and **no** `CATTLE_CA_CHECKSUM` pin.
+
+**Both chart-hardcoded secret names are a trap worth remembering.** Neither chart lets you choose
+the name, so a `Certificate` must target it exactly — and the `Certificate` must be `READY` *before*
+the chart's ingress is pointed at it, or the ingress controller serves its self-signed default in
+the gap. See [the migration runbook](./runbooks/mgmt-tls-migration.md).
+
+**Rate-limit note:** all three mgmt-plane issuances share the SAN set
+{`mgmt.wretchedhive.io`, `*.mgmt.wretchedhive.io`}, so LE counts them as *duplicates* of each other
+against the 5-per-week ceiling. **3 of 5 used as of 2026-09-09** (argocd staging → argocd prod →
+argocd secret-rename, then rancher). Re-issuing on this SAN set this week has little headroom; use
+`letsencrypt-staging` to iterate.
 
 ## Getting a wildcard cert for a new cluster (same domain)
 

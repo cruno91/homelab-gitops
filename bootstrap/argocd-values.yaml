@@ -4,23 +4,25 @@ global:
   domain: argocd.mgmt.wretchedhive.io
 
 server:
-  # Pi-hole round-robins argocd.mgmt.wretchedhive.io to the three RKE2 nodes;
-  # rke2-ingress-nginx on each hostPort 443 terminates TLS at the ingress.
-  # argocd-server speaks plain HTTP behind it (configs.params.server.insecure).
+  # Pi-hole round-robins argocd.mgmt.wretchedhive.io to the three RKE2 nodes.
+  # Since W2, Traefik (DaemonSet on hostPort 443 — ADR-0010) terminates TLS at
+  # the `yavin` Gateway and speaks plain HTTP to argocd-server. The addresses are
+  # unchanged from the ingress-nginx era, which is why no DNS change was needed.
   service:
     type: ClusterIP
+  # plan v2 W2: exposure moved from the chart's Ingress to an HTTPRoute on the
+  # shared `yavin` Gateway (apps/mgmt-control-plane/httproute-argocd.yaml), with
+  # Traefik terminating TLS using the *.mgmt.wretchedhive.io wildcard.
+  #
+  # `server.insecure: true` below stays as-is: argocd-server keeps speaking plain
+  # HTTP and Traefik does TLS, exactly as it did behind ingress-nginx. gRPC-web
+  # for the CLI works over this.
+  #
+  # DO NOT FLIP TO false BEFORE Traefik is serving on mgmt — with no Ingress and
+  # no working Gateway, the Argo CD UI and CLI are unreachable. (Reconciliation
+  # keeps running either way; it does not use the ingress.)
   ingress:
-    enabled: true
-    ingressClassName: nginx
-    hostname: argocd.mgmt.wretchedhive.io
-    # `tls: true` adds a TLS block to the ingress referencing the chart's hardcoded
-    # secret name `argocd-server-tls` — populated by the LE prod Certificate in
-    # apps/mgmt-tls/cert-argocd.yaml (ADR-0009 Phase 3, decision D4 option A).
-    # That Certificate must be READY before this lands, or nginx serves its default
-    # self-signed cert. Verified Ready on LE prod 2026-09-08 (revision 3).
-    tls: true
-    annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    enabled: false
 
 configs:
   params:
