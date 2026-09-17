@@ -7,6 +7,12 @@ kind: Application
 metadata:
   name: hello-world-edge
   namespace: argocd
+  finalizers:
+    # Cascade on delete (ADR-0011): removing this Application should remove the
+    # workload it describes. Without this, deleting it orphans the resources —
+    # they keep running, unmanaged and invisible to GitOps (the W2 mgmt-tls
+    # certificates are the worked example).
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:

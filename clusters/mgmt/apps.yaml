@@ -9,6 +9,13 @@ kind: Application
 metadata:
   name: platform-mgmt
   namespace: argocd
+  # DELIBERATELY NO resources-finalizer (ADR-0011). This Application manages
+  # ApplicationSet/{cert-manager,gateway-api,traefik}. With the finalizer, deleting
+  # it would cascade into all three ApplicationSets -> every Application they
+  # generate -> and because THOSE carry the finalizer, cert-manager, Traefik and the
+  # Gateway API CRDs would be torn out of EVERY registered cluster. One mistaken
+  # delete would drop the data plane on mgmt and edge at once.
+  # Orphaning three ApplicationSets is trivially recoverable; that is not.
 spec:
   project: default
   source:
@@ -38,6 +45,12 @@ kind: Application
 metadata:
   name: mgmt-control-plane
   namespace: argocd
+  finalizers:
+    # Cascade on delete (ADR-0011): removing this Application should remove the
+    # workload it describes. Without this, deleting it orphans the resources —
+    # they keep running, unmanaged and invisible to GitOps (the W2 mgmt-tls
+    # certificates are the worked example).
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
