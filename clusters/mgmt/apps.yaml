@@ -92,6 +92,25 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: fleet-default
+  # Rancher's machine-pool controller writes `dynamicSchemaSpec` onto every
+  # machinePool - a ~6KB JSON blob describing the Harvester driver's field
+  # schema. It is generated metadata, not configuration: it is specific to the
+  # installed driver version, so committing it would mean re-vendoring a 6KB
+  # blob on every Rancher upgrade.
+  #
+  # Without this, Argo sees permanent drift and `selfHeal: true` strips the
+  # field on every sync while Rancher writes it straight back - an endless
+  # fight. Every OTHER field Rancher server-side-defaults is declared
+  # explicitly in apps/harvester-clusters/dev.yaml; this is the sole exception.
+  #
+  # RespectIgnoreDifferences below is what makes this work: without it,
+  # ignoreDifferences only hides the diff, and sync would still send a
+  # machinePools array with the field absent.
+  ignoreDifferences:
+    - group: provisioning.cattle.io
+      kind: Cluster
+      jqPathExpressions:
+        - '.spec.rkeConfig.machinePools[].dynamicSchemaSpec'
   syncPolicy:
     automated:
       # prune: false, UNLIKE every other Application in this repo. With prune on,
@@ -103,3 +122,5 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      # Makes ignoreDifferences apply to the sync payload, not just the diff.
+      - RespectIgnoreDifferences=true

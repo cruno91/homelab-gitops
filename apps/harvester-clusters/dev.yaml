@@ -55,7 +55,39 @@ spec:
   # namespace:name form. Deliberately NOT in git - see ADR-0012.
   cloudCredentialSecretName: cattle-global-data:cc-qf8cr
   kubernetesVersion: v1.35.8+k3s1
+  # Rancher server-side-defaults this to {}. Declared so git matches the live
+  # object - otherwise Argo reports permanent drift and selfHeal fights the
+  # webhook. (ACE/authorized-cluster-endpoint stays off.)
+  localClusterAuthEndpoint: {}
   rkeConfig:
+    # Both also defaulted to {} by Rancher. Same reason.
+    dataDirectories: {}
+    machinePoolDefaults: {}
+    # Rancher's bare defaults here are all zeros/false - no drain, no grace
+    # period, no concurrency cap. These are the values the Rancher UI writes
+    # instead, and on a 3-node etcd+control-plane pool they matter: roll one
+    # node at a time and tolerate DaemonSet pods when draining.
+    upgradeStrategy:
+      controlPlaneConcurrency: "1"
+      workerConcurrency: "1"
+      controlPlaneDrainOptions:
+        enabled: false
+        deleteEmptyDirData: true
+        disableEviction: false
+        force: false
+        gracePeriod: -1
+        ignoreDaemonSets: true
+        skipWaitForDeleteTimeoutSeconds: 0
+        timeout: 120
+      workerDrainOptions:
+        enabled: false
+        deleteEmptyDirData: true
+        disableEviction: false
+        force: false
+        gracePeriod: -1
+        ignoreDaemonSets: true
+        skipWaitForDeleteTimeoutSeconds: 0
+        timeout: 120
     machineGlobalConfig:
       # k3s bundles Traefik and klipper-lb. Disable the bundled Traefik so the
       # platform-layer ApplicationSet owns it at the same chart version as edge
