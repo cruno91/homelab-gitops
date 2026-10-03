@@ -60,9 +60,26 @@ jobs:
           # -skip ksops: viaduct.ai/v1 ksops is a kustomize exec-plugin config,
           # not a Kubernetes CRD — it never gets applied to the cluster, so
           # there's no schema to validate against.
+          #
+          # -skip rke-machine-config.cattle.io/v1/HarvesterConfig: no published
+          # JSON schema exists for it. The CRDs-catalog carries only
+          # hetznerconfig_v1.json for that group and upstream Rancher does not
+          # publish one. Skipped by exact GVK rather than by bare kind so an
+          # unrelated HarvesterConfig would still be caught.
+          #
+          # Deliberately NOT skipped: provisioning.cattle.io/v1/Cluster. The
+          # catalog *does* carry cluster_v1.json, so the cluster definitions in
+          # apps/harvester-clusters/ get real schema validation - which is the
+          # half that matters, since that is where kubernetesVersion, the
+          # machinePools and machineGlobalConfig live.
+          #
+          # What still covers HarvesterConfig: the render job (kustomize build)
+          # catches structural errors, and Rancher's own validating webhook is a
+          # stricter check than any JSON schema - it rejects a bad creatorId, an
+          # unknown field or a wrong type at apply time.
           find "${find_args[@]}" -print0 2>/dev/null \
             | xargs -0 kubeconform -strict -summary \
-              -skip ksops \
+              -skip ksops,rke-machine-config.cattle.io/v1/HarvesterConfig \
               -schema-location default \
               -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 

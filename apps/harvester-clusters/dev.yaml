@@ -1,0 +1,79 @@
+---
+# Harvester guest cluster `dev`, provisioned by Rancher's provisioning-v2 (which
+# IS CAPI - see ADR-0012). Argo applies these two CRs to mgmt; Rancher's
+# controllers do the rest: Cluster -> Machine -> HarvesterMachine ->
+# <machine>-machine-provision Job -> VM on yavin-prime.
+#
+# The machine config is referenced by the pool, so it must exist first; Argo
+# applies both in one sync wave and Rancher tolerates the ordering.
+apiVersion: rke-machine-config.cattle.io/v1
+kind: HarvesterConfig
+metadata:
+  name: dev-yavin-pool
+  namespace: fleet-default
+cpuCount: "4"
+memorySize: "8"
+# diskSize "0" means "take the size from diskInfo". Both fields are required;
+# every numeric field in this CRD is typed *string*.
+diskSize: "0"
+diskInfo: '{"disks":[{"imageName":"default/image-tvrdp","bootOrder":1,"size":256}]}'
+# default/vm-access-untagged is the network that carries DHCP from the LAN.
+# default/vm-access also exists and does NOT - VMs there never get a lease.
+networkInfo: '{"interfaces":[{"networkName":"default/vm-access-untagged","macAddress":""}]}'
+vmNamespace: default
+sshUser: ubuntu
+sshPort: "22"
+# networkData is deliberately EMPTY: the Ubuntu cloud image DHCPs unaided.
+#
+# userData is LOAD-BEARING, not boilerplate. KubeVirt reports a VM's IP to
+# Rancher *through qemu-guest-agent*; without it the Harvester driver polls
+# "Waiting for node get ip" until it exhausts 120 retries (~10 min) and then
+# reaps and retries forever - even though the VM holds a perfectly good lease.
+# Verified 2026-10-02: with the agent, the IP appears ~57s after apply.
+userData: |
+  #cloud-config
+  package_update: true
+  packages:
+    - qemu-guest-agent
+  runcmd:
+    - - systemctl
+      - enable
+      - '--now'
+      - qemu-guest-agent.service
+---
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+metadata:
+  name: dev
+  namespace: fleet-default
+  annotations:
+    # Rancher's validating webhook requires this to match the identity of the
+    # applier, or it rejects with "creatorID annotation does not match user".
+    # kubectl-as-admin would be system:admin; the Rancher UI writes user-<id>.
+    field.cattle.io/creatorId: system:serviceaccount:argocd:argocd-application-controller
+spec:
+  # namespace:name form. Deliberately NOT in git - see ADR-0012.
+  cloudCredentialSecretName: cattle-global-data:cc-qf8cr
+  kubernetesVersion: v1.35.8+k3s1
+  rkeConfig:
+    machineGlobalConfig:
+      # k3s bundles Traefik and klipper-lb. Disable the bundled Traefik so the
+      # platform-layer ApplicationSet owns it at the same chart version as edge
+      # and mgmt; otherwise two Traefiks race for the same ports.
+      # servicelb is LEFT ENABLED so Traefik's LoadBalancer Service gets an
+      # address, matching edge's exposure model (ADR-0010).
+      disable:
+        - traefik
+    etcd:
+      snapshotRetention: 5
+      snapshotScheduleCron: 0 */5 * * *
+    machinePools:
+      - name: yavin-pool
+        quantity: 3
+        controlPlaneRole: true
+        etcdRole: true
+        workerRole: true
+        drainBeforeDelete: true
+        machineConfigRef:
+          kind: HarvesterConfig
+          name: dev-yavin-pool

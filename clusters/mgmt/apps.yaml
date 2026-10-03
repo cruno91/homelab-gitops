@@ -66,3 +66,40 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+---
+# Harvester guest-cluster definitions (ADR-0012). Lives on mgmt because that is
+# where Rancher and its CAPI controllers run; the CRs here describe clusters
+# that come up on yavin-prime.
+#
+# To add a cluster: drop a <name>.yaml in apps/harvester-clusters/, add it to
+# that kustomization, merge. That is the whole workflow.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: harvester-clusters
+  namespace: argocd
+  # DELIBERATELY NO resources-finalizer (ADR-0011/ADR-0012). These CRs are the
+  # only handle on real Kubernetes clusters and their VMs. The standing policy
+  # is "cascade on delete EXCEPT for things we want to survive a mistaken
+  # Application deletion" - a whole cluster is the clearest possible case.
+  # Orphaning a Cluster CR is trivially recoverable; destroying etcd is not.
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cruno91/homelab-gitops.git
+    targetRevision: main
+    path: apps/harvester-clusters
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: fleet-default
+  syncPolicy:
+    automated:
+      # prune: false, UNLIKE every other Application in this repo. With prune on,
+      # deleting a line from apps/harvester-clusters/kustomization.yaml would
+      # delete a running cluster. Combined with the missing finalizer above, it
+      # now takes two deliberate acts to destroy one. Cluster teardown is an
+      # explicit operation (Rancher UI or kubectl), not a side effect of an edit.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
