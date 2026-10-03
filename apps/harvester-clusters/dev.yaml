@@ -9,7 +9,7 @@
 apiVersion: rke-machine-config.cattle.io/v1
 kind: HarvesterConfig
 metadata:
-  name: dev-pool1
+  name: dev-yavin-pool
   namespace: fleet-default
 cpuCount: "4"
 memorySize: "8"
