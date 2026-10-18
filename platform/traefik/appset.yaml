@@ -12,6 +12,10 @@
 #   edge — K3s bundles klipper-lb (`servicelb`), so a LoadBalancer Service gets
 #          an EXTERNAL-IP and klipper opens 80/443 on every node itself. Traefik
 #          must NOT bind hostPorts here or it collides with klipper.
+#   dev  — K3s like edge, so it takes edge's model exactly: LoadBalancer
+#          Service + klipper, no hostPorts. This is why the bundled k3s
+#          Traefik is disabled while `servicelb` is deliberately LEFT
+#          enabled in apps/harvester-clusters/dev.yaml (ADR-0012).
 #   mgmt — RKE2 ships no service load balancer, so a LoadBalancer Service would
 #          sit <pending> forever. Traefik runs as a DaemonSet binding hostPorts
 #          80/443 directly, reproducing rke2-ingress-nginx's exposure model so
@@ -35,6 +39,12 @@ spec:
   generators:
     - list:
         elements:
+          - name: dev
+            wildcardHostname: "*.dev.wretchedhive.io"
+            wildcardSecret: wildcard-dev-wretchedhive-io-tls
+            deploymentKind: Deployment
+            serviceType: LoadBalancer
+            hostPorts: false
           - name: edge
             wildcardHostname: "*.edge.wretchedhive.io"
             wildcardSecret: wildcard-edge-wretchedhive-io-tls

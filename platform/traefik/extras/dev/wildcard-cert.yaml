@@ -1,0 +1,32 @@
+---
+# Wildcard cert for dev's Traefik Gateway HTTPS listener.
+#
+# Same model as edge and mgmt: a per-cluster wildcard, so the blast radius of a
+# leak is one cluster's hostnames rather than the whole homelab. Issued by
+# Let's Encrypt over DNS-01 using the Cloudflare token in
+# platform/cert-manager/extras/cloudflare-token.enc.yaml.
+#
+# TLS wildcard matching (RFC 6125) is one label deep: *.dev.wretchedhive.io
+# matches app.dev.wretchedhive.io but NOT foo.bar.dev.wretchedhive.io. Keep
+# hostnames flat under this level.
+#
+# ISSUER IS letsencrypt-staging ON PURPOSE. Standing rule for this project: a
+# new DNS-01 name validates against staging first, because LE prod allows only
+# 5 duplicate certificates per week and a mistake there costs days. Once this
+# goes Ready and the Gateway serves it, swap issuerRef.name to letsencrypt-prod
+# as a separate commit. Until then browsers will warn — expected, not a bug.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-dev-wretchedhive-io
+  namespace: traefik
+spec:
+  secretName: wildcard-dev-wretchedhive-io-tls
+  commonName: "*.dev.wretchedhive.io"
+  dnsNames:
+    - "dev.wretchedhive.io"
+    - "*.dev.wretchedhive.io"
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
