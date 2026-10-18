@@ -17,7 +17,13 @@ Both live at `platform/cert-manager/extras/letsencrypt-{staging,prod}-clusteriss
 
 **API credential:** Cloudflare API token, SOPS-encrypted at `platform/cert-manager/extras/cloudflare-token.enc.yaml`, decrypted at manifest-generation time by the argocd-repo-server KSOPS sidecar (see [ADR-0005](./adr/0005-secrets-sops-age.md)). Token scope: `Zone → Zone → Read` + `Zone → DNS → Edit` on `wretchedhive.io` only.
 
-**End-consumer:** the Traefik Gateway on edge terminates TLS using a wildcard `Certificate` (`platform/traefik/extras/wildcard-cert.yaml`) that references `letsencrypt-prod`. Any hostname under `*.edge.wretchedhive.io` gets a valid cert for free — no per-hostname `Certificate` needed.
+**End-consumers:** every cluster's Traefik Gateway (`yavin`, namespace `traefik`) terminates TLS using a per-cluster wildcard `Certificate` at `platform/traefik/extras/<cluster>/wildcard-cert.yaml`, all on `letsencrypt-prod`. Any hostname under a cluster's wildcard gets a valid cert for free — no per-hostname `Certificate` needed.
+
+| Cluster | Wildcard | Secret (ns `traefik`) | Node IPs for Pi-hole records |
+|---|---|---|---|
+| mgmt | `*.mgmt.wretchedhive.io` | `wildcard-mgmt-wretchedhive-io-tls` | `10.0.3.41/42/43` (hostPort DaemonSet) |
+| edge | `*.edge.wretchedhive.io` | `wildcard-edge-wretchedhive-io-tls` | `10.0.3.3/4/5` (klipper-lb) |
+| dev | `*.dev.wretchedhive.io` | `wildcard-dev-wretchedhive-io-tls` | `10.0.3.158/.182/.241` (klipper-lb) |
 
 ## Prerequisites (should already be true)
 
@@ -28,49 +34,52 @@ Both live at `platform/cert-manager/extras/letsencrypt-{staging,prod}-clusteriss
 
 ## Getting a cert for a new hostname (most common)
 
-The typical case: you're adding a new service like `harbor.edge.wretchedhive.io`. **You do not need a new `Certificate`.** The existing edge wildcard `*.edge.wretchedhive.io` already covers it. Two things to do:
+The typical case: you're adding a new service like `harbor.edge.wretchedhive.io`. **You do not need a new `Certificate`.** The existing edge wildcard `*.edge.wretchedhive.io` already covers it. The same applies on mgmt and dev with their own wildcards (table above). Two things to do:
 
-1. **Add a Pi-hole A record** for the new hostname pointing at the edge node IPs (`10.0.3.3`, `10.0.3.4`, `10.0.3.5`). Round-robin A records — one entry per node IP.
+1. **Add a Pi-hole A record** for the new hostname pointing at that cluster's node IPs (for edge: `10.0.3.3`, `10.0.3.4`, `10.0.3.5`). Round-robin A records — one entry per node IP. Pi-hole Local DNS records are **exact-match** — a record for `dev.wretchedhive.io` does not answer `app.dev.wretchedhive.io` — so every hostname needs its own records. **Known gap (open):** the workstation resolves via the router (`10.0.1.1`), which holds its own copies of some records and returns NXDOMAIN for names it lacks (currently `*.dev`); the lasting fix is for the router to forward `wretchedhive.io` to Pi-hole (`10.0.3.2`). Confirm a suspected DNS miss with `curl --resolve <host>:443:<node-ip> https://<host>/`.
 2. **Reference the wildcard cert Secret** from your service's Gateway/HTTPRoute. Traefik already terminates TLS on `wildcard-edge-wretchedhive-io-tls` for the whole `*.edge.wretchedhive.io` listener; your `HTTPRoute` just attaches to that Gateway. Nothing else to configure.
 
 That's it. Wildcard matching (RFC 6125) is one label deep, so `harbor.edge.wretchedhive.io` matches `*.edge.wretchedhive.io` but `foo.harbor.edge.wretchedhive.io` would not.
 
 ## Getting a cert for a new hostname on the mgmt plane
 
-**Fully migrated as of 2026-09-09 (ADR-0009 W1, Phases 2–4).** The mgmt wildcard
-`*.mgmt.wretchedhive.io` is live on **LE prod** and the same pattern as the edge wildcard applies —
-the `Certificate` lives in `apps/mgmt-tls/`, synced to the mgmt cluster only by the `mgmt-tls`
-Application in `clusters/mgmt/apps.yaml` (deliberately *not* in `platform/cert-manager/extras/`,
-which fans out to every registered cluster).
+Same as edge since W2 (2026-09-17). The mgmt wildcard `*.mgmt.wretchedhive.io` lives at
+`platform/traefik/extras/mgmt/wildcard-cert.yaml` (Certificate `wildcard-mgmt-wretchedhive-io`,
+Secret `wildcard-mgmt-wretchedhive-io-tls`, namespace `traefik`) and is served by mgmt's Traefik
+Gateway. Rancher and Argo CD reach it through HTTPRoutes in `apps/mgmt-control-plane/`; a new mgmt
+service needs only its own HTTPRoute attached to the `yavin` Gateway plus Pi-hole records →
+`10.0.3.41/42/43`.
 
-| Consumer | Hostname | Secret | Note |
-|---|---|---|---|
-| Argo CD | `argocd.mgmt.wretchedhive.io` | `argocd-server-tls` | name hardcoded by the argo-cd chart for `server.ingress.tls: true` |
-| Rancher | `rancher.mgmt.wretchedhive.io` | `tls-rancher-ingress` | name hardcoded by the Rancher chart for `ingress.tls.source: secret` |
+| Consumer | Hostname | Route |
+|---|---|---|
+| Argo CD | `argocd.mgmt.wretchedhive.io` | `apps/mgmt-control-plane/httproute-argocd.yaml` |
+| Rancher | `rancher.mgmt.wretchedhive.io` | `apps/mgmt-control-plane/httproute-rancher.yaml` |
 
 Both verify with no `-k` (`http=200 verify=0`). Downstream Rancher agents validate against the
 public LE chain with `agent-tls-mode: system-store` and **no** `CATTLE_CA_CHECKSUM` pin.
 
-**Both chart-hardcoded secret names are a trap worth remembering.** Neither chart lets you choose
-the name, so a `Certificate` must target it exactly — and the `Certificate` must be `READY` *before*
-the chart's ingress is pointed at it, or the ingress controller serves its self-signed default in
-the gap. See [the migration runbook](./runbooks/mgmt-tls-migration.md).
+**History worth remembering (W1, 2026-09-09).** Before W2, these two control planes were served by
+`rke2-ingress-nginx` from chart-hardcoded Secrets (`argocd-server-tls`, `tls-rancher-ingress`)
+issued from a separate `apps/mgmt-tls/` Application. Neither chart let you choose the Secret name,
+so a `Certificate` had to target it exactly and be `READY` *before* the chart's ingress pointed at
+it. Both Secrets, their Certificates and `apps/mgmt-tls/` were removed in W2 cleanup. See
+[the W1 runbook](./runbooks/mgmt-tls-migration.md) and
+[the W2 runbook](./runbooks/mgmt-httproute-migration.md).
 
-**Rate-limit note:** all three mgmt-plane issuances share the SAN set
+**Rate-limit note:** every mgmt-plane issuance shares the SAN set
 {`mgmt.wretchedhive.io`, `*.mgmt.wretchedhive.io`}, so LE counts them as *duplicates* of each other
-against the 5-per-week ceiling. **3 of 5 used as of 2026-09-09** (argocd staging → argocd prod →
-argocd secret-rename, then rancher). Re-issuing on this SAN set this week has little headroom; use
-`letsencrypt-staging` to iterate.
+against the 5-per-week ceiling. W1 used 3 in the week of 2026-09-09 and W2 issued the current
+`traefik` copy. Use `letsencrypt-staging` to iterate on this SAN set.
 
 ## Getting a wildcard cert for a new cluster (same domain)
 
-Case: a new cluster comes online (dev, or the eventual mgmt migration) and needs its own `*.<cluster>.wretchedhive.io` wildcard. Cheaper than the new-domain flow — cert-manager, both LE ClusterIssuers, and the Cloudflare token are already fanned out to every registered cluster by the `cert-manager` ApplicationSet, so the only new pieces are a `Certificate` resource on the new cluster and its consumer.
+Case: a new cluster comes online and needs its own `*.<cluster>.wretchedhive.io` wildcard. `dev` (2026-10-17) is the worked example; the end-to-end procedure for a Harvester guest cluster, including registration, is [`runbooks/register-harvester-guest-cluster.md`](./runbooks/register-harvester-guest-cluster.md) (steps 5–7). Cheaper than the new-domain flow — cert-manager, both LE ClusterIssuers, and the Cloudflare token are already fanned out to every registered cluster by the `cert-manager` ApplicationSet, so the only new pieces are a `Certificate` resource on the new cluster and its consumer.
 
 Assuming the cluster is already registered with Argo CD and cert-manager reports `Ready` there:
 
-1. **Pick a component to host the Certificate.** Almost always the same one that hosts the cluster's Gateway/ingress data plane. On edge that's `platform/traefik/extras/wildcard-cert.yaml`. For a new cluster, either extend the existing component's `extras/` to include the new cluster (if the same chart is going to run there) or add a parallel component (e.g. a `platform/traefik-mgmt/`) if the topology is different.
+1. **Pick a component to host the Certificate.** Almost always the same one that hosts the cluster's Gateway/ingress data plane — today that is Traefik on every cluster. Add the cluster as an element in `platform/traefik/appset.yaml` (exposure differences — LoadBalancer vs hostPort — are element fields, see [ADR-0010](./adr/0010-mgmt-traefik-hostport-daemonset.md)) and create `platform/traefik/extras/<cluster>/`, which the appset derives from the element name.
 
-2. **Write the `Certificate`.** Model on `platform/traefik/extras/wildcard-cert.yaml`. For `*.dev.wretchedhive.io`:
+2. **Write the `Certificate`.** Model on `platform/traefik/extras/edge/wildcard-cert.yaml`. For `*.dev.wretchedhive.io` (as first committed — now on prod):
 
     ```yaml
     apiVersion: cert-manager.io/v1
@@ -90,7 +99,7 @@ Assuming the cluster is already registered with Argo CD and cert-manager reports
         group: cert-manager.io
     ```
 
-    Same shape as edge; only the subdomain and Secret name change.
+    Same shape as edge; only the subdomain and Secret name change. The Secret name must match the element's `wildcardSecret`.
 
 3. **Reference the Secret** from whatever terminates TLS on that cluster (Gateway `certificateRefs`, Ingress `tls[].secretName`, etc.). Its namespace must match the consumer's namespace — cert-manager creates the Secret next to the `Certificate` resource.
 
@@ -163,7 +172,7 @@ Rare — most services fit under an existing `*.<cluster>.wretchedhive.io` wildc
 
 5. **Do the same for staging.** Create `letsencrypt-staging-example-com-clusterissuer.yaml` with the staging ACME URL (`https://acme-staging-v02.api.letsencrypt.org/directory`) and a distinct `letsencrypt-staging-example-com-account-key`. Reference it from a `Certificate` first, validate, then flip to the prod ClusterIssuer.
 
-6. **Write the `Certificate` that consumes the new issuer.** Under whichever component owns the TLS listener for the new domain — probably a new wildcard cert under a `platform/traefik/extras/` (or wherever the Gateway lives), following the shape of the existing `wildcard-cert.yaml`.
+6. **Write the `Certificate` that consumes the new issuer.** Under whichever component owns the TLS listener for the new domain — probably a new wildcard cert under a `platform/traefik/extras/` (or wherever the Gateway lives), following the shape of the existing `platform/traefik/extras/<cluster>/wildcard-cert.yaml` files.
 
 7. **Commit and push.** After `platform-mgmt` picks up the appset changes, watch reconciliation:
 
@@ -243,7 +252,14 @@ Do this if the token is leaked, expired, or you're revoking access. The token is
 
 Useful during debugging — e.g., you're changing the `Certificate` resource shape or the solver config and want to iterate without touching LE prod rate limits.
 
-One line: change `issuerRef.name` on the `Certificate` (e.g., `platform/traefik/extras/wildcard-cert.yaml`) from `letsencrypt-prod` to `letsencrypt-staging` (or back). Both ClusterIssuers are permanently defined — no other change needed. cert-manager reissues the cert against the new issuer on the next sync; the Secret name stays the same, downstream consumers don't notice.
+One line: change `issuerRef.name` on the `Certificate` (e.g., `platform/traefik/extras/edge/wildcard-cert.yaml`) from `letsencrypt-prod` to `letsencrypt-staging` (or back). Both ClusterIssuers are permanently defined — no other change needed. cert-manager reissues the cert against the new issuer on the next sync; the Secret name stays the same, downstream consumers don't notice.
+
+**Do not delete the Secret to force the swap.** cert-manager records the issuer on the Secret (`cert-manager.io/issuer-name`), compares it with the Certificate's `issuerRef`, flags `IncorrectIssuer` and re-issues by itself — serving the old cert until the new one lands. On `dev`'s staging → prod swap (2026-10-17) that took ~2½ minutes with no listener gap. Deleting the Secret first only opens a window where the Gateway's `websecure` listener has no certificate. Check progress with:
+
+```bash
+kubectl -n traefik get secret <secret-name> \
+  -o jsonpath='{.metadata.annotations.cert-manager\.io/issuer-name}{"\n"}'   # flips staging -> prod
+```
 
 ### Backing up the age key
 
