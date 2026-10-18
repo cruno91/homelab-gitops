@@ -1,0 +1,22 @@
+---
+# dev overlay for hello-world. Reuses apps/hello-world/ unchanged as the base
+# (that dir is what hello-world-edge renders; leaving it alone keeps edge's
+# output byte-identical and avoids the two-Applications-polling-git prune race
+# a move/rename would invite). Only the HTTPRoute hostname differs on dev.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../hello-world
+patches:
+  - target:
+      group: gateway.networking.k8s.io
+      version: v1
+      kind: HTTPRoute
+      name: hello-world
+    patch: |-
+      - op: test
+        path: /spec/hostnames/0
+        value: hello.edge.wretchedhive.io
+      - op: replace
+        path: /spec/hostnames/0
+        value: hello.dev.wretchedhive.io

@@ -35,7 +35,7 @@ cert-manager is also a dependency for other things (Gateway API webhook certs, o
 
 ## The fan-out problem (and why ApplicationSets exist)
 
-There are 3 clusters (mgmt, edge, and dev-once-it-exists). cert-manager needs to run on all of them. Each cluster will eventually run other shared things too — observability, Gateway API, Harbor.
+There are 3 clusters (mgmt, edge, and dev). cert-manager needs to run on all of them. Each cluster will eventually run other shared things too — observability, Gateway API, Harbor.
 
 The naive way: write `Application/cert-manager-mgmt`, `Application/cert-manager-edge`, etc. by hand. Add a new cluster? Edit Git, add another Application. Add a new platform component? Add three new Applications. With N clusters × M components, this scales miserably.
 
@@ -46,9 +46,9 @@ The naive way: write `Application/cert-manager-mgmt`, `Application/cert-manager-
 
 Argo CD then maintains the resulting Applications automatically. Add a cluster, the matching Application appears. Remove one, it disappears.
 
-The generator used for platform components is the **cluster generator**. It looks at every cluster registered with this Argo CD (the `cluster-edge` Secret, plus the implicit in-cluster connection for mgmt) and emits one item per cluster. One ApplicationSet → as many Applications as you have clusters. Today: 2. Tomorrow when you `argocd cluster add` the Harvester guest cluster: 3, automatically, with no Git change.
+The generator used for platform components is the **cluster generator**. It looks at every cluster registered with this Argo CD (the cluster Secrets for `edge` and `dev`, plus the implicit in-cluster connection for mgmt) and emits one item per cluster. One ApplicationSet → as many Applications as you have clusters. Today: 3.
 
-That matches the Week 9 success criterion exactly: *"a new cluster registration would automatically receive both."*
+That matches the Week 9 success criterion exactly: *"a new cluster registration would automatically receive both."* It was proven for real on 2026-10-17: registering the Harvester guest cluster `dev` made `cert-manager-dev` and `gateway-api-dev` appear and go Healthy within about 40 seconds, with no Git change. The registration procedure itself is in [`runbooks/register-harvester-guest-cluster.md`](./runbooks/register-harvester-guest-cluster.md).
 
 ## The three pieces
 
@@ -59,11 +59,11 @@ Lives at `platform/cert-manager/appset.yaml`. For every registered cluster, this
 The Application it stamps out is **multi-source**:
 
 1. Source #1: the cert-manager Helm chart from Jetstack (`charts.jetstack.io`, pinned to v1.20.2).
-2. Source #2: this repo's `platform/cert-manager/extras/` directory, containing the SelfSigned ClusterIssuer.
+2. Source #2: this repo's `platform/cert-manager/extras/` directory, containing the three ClusterIssuers (`selfsigned`, `letsencrypt-staging`, `letsencrypt-prod`) and the SOPS-encrypted Cloudflare token they use.
 
 The destination is the cluster's `cert-manager` namespace.
 
-When Argo reconciles this ApplicationSet, two Applications appear in `argocd app list`: `cert-manager-in-cluster` (mgmt) and `cert-manager-edge`. Each one independently installs cert-manager onto its target cluster.
+When Argo reconciles this ApplicationSet, three Applications appear in `argocd app list`: `cert-manager-in-cluster` (mgmt), `cert-manager-edge` and `cert-manager-dev`. Each one independently installs cert-manager onto its target cluster.
 
 ### `Application/platform-mgmt` — the umbrella that *applies* the ApplicationSet
 
@@ -77,7 +77,7 @@ This is sometimes called the **app-of-appsets pattern**. The umbrella exists so 
 
 The directory itself. `platform/kustomization.yaml` is the umbrella's index — it lists every `<component>/appset.yaml` as a resource. Adding a new platform component (Harbor, observability, step-ca, …) is just dropping a file into `platform/<new-component>/appset.yaml` and adding it to the umbrella — `platform-mgmt` picks it up on next reconcile, creates the new ApplicationSet on mgmt, which fans the per-cluster Applications out. No per-cluster Git edits.
 
-Generator choice per component is just about scope. `cert-manager/appset.yaml` uses a cluster generator because cert-manager belongs on every cluster. `traefik/appset.yaml` uses a list generator (`elements: [{name: edge}]`) because Traefik is the ingress data plane on edge today and would conflict with mgmt's `rke2-ingress-nginx` for hostPort 80/443. Add or remove a cluster from the list, and Argo stamps or prunes the matching Application — the pattern handles both fan-out shapes.
+Generator choice per component is just about scope. `cert-manager/appset.yaml` and `gateway-api/appset.yaml` use a cluster generator because they belong on every cluster. `traefik/appset.yaml` uses a list generator (`elements: [dev, edge, mgmt]`) because Traefik is the data plane and its exposure differs per cluster: edge and dev (K3s) get a LoadBalancer Service via klipper-lb, while mgmt (RKE2, no service LB) gets a hostPort 80/443 DaemonSet ([ADR-0010](./adr/0010-mgmt-traefik-hostport-daemonset.md)). Those differences live as fields on each list element, and each cluster's wildcard `Certificate` lives in `platform/traefik/extras/<cluster>/`. Add or remove a cluster from the list, and Argo stamps or prunes the matching Application — the pattern handles both fan-out shapes. It also means a newly registered cluster gets cert-manager and Gateway API automatically, but Traefik only when someone adds its element.
 
 ### Encrypted resources in `extras/` (KSOPS CMP)
 
@@ -115,6 +115,7 @@ clusters/mgmt/apps.yaml
         │     ▼                                     │
         │   Application/cert-manager-in-cluster ────┼──→ installs cert-manager into mgmt
         │   Application/cert-manager-edge       ────┼──→ installs cert-manager into edge
+        │   Application/cert-manager-dev        ────┼──→ installs cert-manager into dev
         │                                           │
         └───────────────────────────────────────────┘
 ```
@@ -138,10 +139,10 @@ Nothing runs until the changes land in `main`. Once they do:
 1. Argo CD on mgmt polls `main` (default: every 3 minutes).
 2. `mgmt-bootstrap` (which already points at `clusters/mgmt/`) sees the new `platform-mgmt` Application and creates it.
 3. `platform-mgmt` syncs, applying the `cert-manager` ApplicationSet onto mgmt.
-4. The ApplicationSet controller runs the cluster generator and creates `cert-manager-in-cluster` and `cert-manager-edge` Applications.
+4. The ApplicationSet controller runs the cluster generator and creates one Application per registered cluster (`cert-manager-in-cluster`, `cert-manager-edge`, `cert-manager-dev`).
 5. Each of those Applications syncs, installing the chart + ClusterIssuer onto its target cluster.
 
-Steps 2–5 typically complete within a couple of minutes once you push. After that, `kubectl -n cert-manager get pods` on either cluster shows actual cert-manager pods running, and `kubectl get clusterissuer selfsigned` reports `Ready: True`.
+Steps 2–5 typically complete within a couple of minutes once you push. After that, `kubectl -n cert-manager get pods` on any cluster shows actual cert-manager pods running, and `kubectl get clusterissuer selfsigned` reports `Ready: True`.
 
 ## Adding a new platform component (the recipe)
 
@@ -152,4 +153,4 @@ The pattern is reusable. For any new component (Gateway API, observability, Harb
 3. Add `- <component>/appset.yaml` to `platform/kustomization.yaml`.
 4. Commit + push. `platform-mgmt` picks it up; the new ApplicationSet creates one Application per registered cluster; rollout follows.
 
-If a component is mgmt-only (Harbor), the cluster generator gets a `selector.matchLabels` that only matches mgmt's cluster Secret labels. Same shape, narrower fan-out.
+If a component is mgmt-only (Harbor), the obvious move is a cluster generator with a `selector.matchLabels` — but mgmt has no cluster Secret to carry labels ([ADR-0007](./adr/0007-applicationset-mgmt-destination.md): it is Argo's implicit in-cluster connection, targeted by server URL), so a label selector cannot select it as things stand. A list generator (as Traefik uses) or a plain Application in `clusters/mgmt/apps.yaml` (as `mgmt-control-plane` and `harvester-clusters` use) are the existing shapes for single-cluster scope; W5 (Harbor) is where this gets decided.
