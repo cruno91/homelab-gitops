@@ -19,7 +19,7 @@ jobs:
       - name: Install kubeconform
         run: |
           set -euo pipefail
-          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
             | sudo tar xz -C /usr/local/bin/ kubeconform
           kubeconform -v
 
@@ -121,7 +121,7 @@ jobs:
       - name: Setup helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.16.3
+          version: v3.22.1
 
       - name: Add argo helm repo
         run: helm repo add argo https://argoproj.github.io/argo-helm
