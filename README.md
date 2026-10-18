@@ -24,7 +24,7 @@ homelab-gitops/
 ├── clusters/                 # one directory per cluster: that cluster's Argo Applications (applied to mgmt)
 │   ├── mgmt/                 # platform-mgmt, mgmt-control-plane, harvester-clusters
 │   ├── edge/                 # hello-world-edge
-│   ├── dev/                  # excluded from the bootstrap ApplicationSet until hello-world-dev lands (in progress)
+│   ├── dev/                  # hello-world-dev
 │   └── sandbox-template/     # excluded from the bootstrap ApplicationSet; stamped onto ephemeral clusters
 ├── platform/                 # shared platform components, one ApplicationSet per component (see ADR-0008)
 │   ├── cert-manager/         # cluster generator: every registered cluster; LE staging + prod ClusterIssuers
