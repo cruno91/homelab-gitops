@@ -10,11 +10,13 @@
 # matches app.dev.wretchedhive.io but NOT foo.bar.dev.wretchedhive.io. Keep
 # hostnames flat under this level.
 #
-# ISSUER IS letsencrypt-staging ON PURPOSE. Standing rule for this project: a
-# new DNS-01 name validates against staging first, because LE prod allows only
-# 5 duplicate certificates per week and a mistake there costs days. Once this
-# goes Ready and the Gateway serves it, swap issuerRef.name to letsencrypt-prod
-# as a separate commit. Until then browsers will warn — expected, not a bug.
+# Issued by letsencrypt-prod after the DNS-01 flow was validated end-to-end
+# against letsencrypt-staging (2026-10-17: staging cert Ready, served by the
+# Gateway on all three nodes). Swap issuerRef.name back to letsencrypt-staging
+# if debugging cert-manager or Cloudflare changes, to stay clear of LE prod's
+# 5-duplicate-certificates-per-week limit. No need to delete the Secret on a
+# swap: cert-manager compares the Secret's issuer annotation to issuerRef and
+# re-issues on mismatch, serving the old cert until the new one lands.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -27,6 +29,6 @@ spec:
     - "dev.wretchedhive.io"
     - "*.dev.wretchedhive.io"
   issuerRef:
-    name: letsencrypt-staging
+    name: letsencrypt-prod
     kind: ClusterIssuer
     group: cert-manager.io
