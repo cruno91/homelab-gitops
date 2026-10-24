@@ -1,0 +1,12 @@
+---
+# Keeps one backup resolver up through node drains (k3s upgrades, safe-reboot).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pihole
+  namespace: pihole
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: pihole

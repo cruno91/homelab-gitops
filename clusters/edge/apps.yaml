@@ -29,3 +29,33 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+---
+# Backup Pi-hole (primary is yavin1's Docker Pi-hole). Stateless; config is
+# synced from yavin1 by a nebula-sync sidecar. See apps/pihole-edge/.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pihole-edge
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/cruno91/homelab-gitops.git
+    targetRevision: main
+    path: apps/pihole-edge
+    # Force the ksops CMP sidecar; Argo's built-in kustomize would refuse the
+    # ksops exec generator. Same wiring as platform/cert-manager/appset.yaml.
+    plugin:
+      name: ksops
+  destination:
+    name: edge
+    namespace: pihole
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

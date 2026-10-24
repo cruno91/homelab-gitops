@@ -1,0 +1,154 @@
+---
+# Backup Pi-hole for the lab. The primary is the Docker Pi-hole on yavin1
+# (10.0.3.2); this one answers on the edge node IPs and exists so DNS keeps
+# working while yavin1 is down for maintenance.
+#
+# Stateless on purpose: edge only has local-path storage, which would pin the
+# pod to one node. Each pod starts empty and its nebula-sync sidecar copies
+# config from yavin1 (local DNS records, upstreams, adlists, domain lists,
+# groups). yavin1's web UI stays the single source of truth.
+#
+# Readiness = "a local record resolves", so a fresh pod takes no traffic until
+# its first sync has landed. Rolling updates surge a new pod before removing an
+# old one for the same reason.
+#
+# Never take yavin1 and the edge cluster down together; this backup covers
+# one at a time.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pihole
+  namespace: pihole
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: pihole
+  template:
+    metadata:
+      labels:
+        app: pihole
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: pihole
+      containers:
+        - name: pihole
+          # Same release the primary is being pinned to in Phase 1e.
+          image: pihole/pihole:2026.10.0
+          env:
+            - name: TZ
+              value: America/New_York
+            - name: FTLCONF_webserver_api_password
+              valueFrom:
+                secretKeyRef:
+                  name: pihole-sync
+                  key: replica-password
+            # Queries arrive SNATed from klipper; answer regardless of source
+            # subnet. Matches the primary. Env-set keys are read-only in
+            # Pi-hole v6, so nebula-sync excludes this one (see below).
+            - name: FTLCONF_dns_listeningMode
+              value: all
+            - name: READINESS_RECORD
+              value: rancher.mgmt.wretchedhive.io
+          ports:
+            - name: dns-udp
+              containerPort: 53
+              protocol: UDP
+            - name: dns-tcp
+              containerPort: 53
+              protocol: TCP
+            - name: http
+              containerPort: 80
+          # First start builds gravity from the default list; give it time.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "dig +short +time=2 +tries=1 @127.0.0.1 pi.hole | grep -q ."]
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "dig +short +time=2 +tries=1 @127.0.0.1 pi.hole | grep -q ."]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "dig +short +time=2 +tries=1 @127.0.0.1 \"$READINESS_RECORD\" | grep -q ."]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: etc-pihole
+              mountPath: /etc/pihole
+        - name: nebula-sync
+          image: ghcr.io/lovelaze/nebula-sync:v0.11.3
+          env:
+            - name: PRIMARY
+              valueFrom:
+                secretKeyRef:
+                  name: pihole-sync
+                  key: PRIMARY
+            - name: REPLICAS
+              valueFrom:
+                secretKeyRef:
+                  name: pihole-sync
+                  key: REPLICAS
+            - name: TZ
+              value: America/New_York
+            # Syncs once at start, then on this schedule. @every counts from
+            # process start, so the two pods drift apart instead of syncing
+            # (and reloading) on the same tick.
+            - name: CRON
+              value: "@every 15m"
+            # Selective, not full Teleporter sync: full sync would also carry
+            # the primary's webserver/password config and DHCP settings.
+            - name: FULL_SYNC
+              value: "false"
+            - name: SYNC_CONFIG_DNS
+              value: "true"
+            - name: SYNC_CONFIG_DNS_EXCLUDE
+              value: listeningMode
+            - name: SYNC_GRAVITY_GROUP
+              value: "true"
+            - name: SYNC_GRAVITY_AD_LIST
+              value: "true"
+            - name: SYNC_GRAVITY_AD_LIST_BY_GROUP
+              value: "true"
+            - name: SYNC_GRAVITY_DOMAIN_LIST
+              value: "true"
+            - name: SYNC_GRAVITY_DOMAIN_LIST_BY_GROUP
+              value: "true"
+            - name: RUN_GRAVITY
+              value: "true"
+            # The local Pi-hole may still be starting when the first sync
+            # runs; if auth retries run out the container exits and kubelet
+            # restarts it, which is the intended retry loop.
+            - name: CLIENT_RETRY_DELAY_SECONDS
+              value: "10"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: etc-pihole
+          emptyDir: {}

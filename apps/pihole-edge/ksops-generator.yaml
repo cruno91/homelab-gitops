@@ -1,0 +1,14 @@
+---
+# KSOPS generator config. See platform/cert-manager/extras/ksops-generator.yaml
+# for how the ksops sidecar in argocd-repo-server consumes this.
+#
+# pihole-sync.enc.yaml holds Secret pihole/pihole-sync with three keys:
+#   replica-password  web/API password for the backup Pi-hole pods
+#   PRIMARY           nebula-sync source:  http://10.0.3.2|<yavin1 app password>
+#   REPLICAS          nebula-sync target:  http://127.0.0.1|<replica-password>
+apiVersion: viaduct.ai/v1
+kind: ksops
+metadata:
+  name: pihole-edge-generator
+files:
+  - ./pihole-sync.enc.yaml
