@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: pihole-sync
+    namespace: pihole
+type: Opaque
+stringData:
+    replica-password: ENC[AES256_GCM,data:EjTVoXbVDykyOuHU44k7xsEwvNQ+LQiGHBVkjiNBM3cpBCOT/cEAeFjqUN8I5Zla,iv:2QeUNhMt4z6YPop+E4ydgr82576vcbT86kaU+1MnBPw=,tag:AteUBrBmph2/7BazUmzEXA==,type:str]
+    PRIMARY: ENC[AES256_GCM,data:LhbCzcRP9aZqLdvGQfEOL/8PdKoek9ezgKg928j2ehr86zX8nsO93RNQHoQdUg+Z+U5KSiTu6AGEEVaC,iv:rxuTZA/gfNnXHTfTbSUya6TXN4mcrDU8PF15KFf0pEM=,tag:aEs/iTQ17WxtlmO3SHJ+mA==,type:str]
+    REPLICAS: ENC[AES256_GCM,data:cOoCWzzURxlQh+85e/o76BE1CjBR9B/As4fXP9vJoWfuEFEJl3oHUo4MFWVDN9MU3eLowL9mocY6jKDlS1DpX7k=,iv:kBQyxN0RCvFSzGVqip+GrycUJqGGPZufqe+IxCI4tyk=,tag:ijr/aYZ3uJTfVxMxEhBWOQ==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBNQmxJdlhDaEN5N0NLZnht
+            NWpmMWI0L2NqeW4wYjk0a2ZYV0dnMTdmbVVFCjExMEJLN0Zqc2M4di9wK0Q1WjYy
+            Z1IyaDg5Q3ovVTIxNXFVd1h4Z3NZQlkKLS0tIEhFT2d2blVXT081TXZGbGFURGdJ
+            T0MrODZWVHRnVEgvMU1pYWUycVZBVTQKL6MlmrHzUhYiHU/6zuJfllDDdR7x1V6a
+            H1GX2d2JNpaDPEgG5A7aRCgl+yfx/q7Jacb1i5lHal+az6PRc5ToOA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1nd5tj64t0czmdk7ymjudav7pmk4p3wszpzd9vlnhpkh0cpx9ng9sn9d732
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-24T02:51:01Z"
+    mac: ENC[AES256_GCM,data:fHSz/BOsiplpJGBhPcx7P+q5VNCfWedZ4cUOSccRYpWkuEwN0r3OIly3DqV4m3UzgJt32w0TR+nZ5Vg6eYHUYYOwDXhZPyKox4kwI6b04OJLR4gIV7UOrxQJM6yV1zgehhRKTMwNemUVX6C3mvSZGI6rnN+3qf2rLxngmLAHX1k=,iv:whR2AOlmyEFD98rZWTsoDp4PVcazk3anl1BL4WdyxVY=,tag:z3lyM1lX9dfwl5wlOCybMw==,type:str]
+    version: 3.13.3
