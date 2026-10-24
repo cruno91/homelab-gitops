@@ -136,8 +136,15 @@ spec:
               value: "true"
             - name: SYNC_GRAVITY_DOMAIN_LIST_BY_GROUP
               value: "true"
+            # Off: nebula-sync runs gravity on the PRIMARY as well as the
+            # replicas. With two pods syncing, two rebuilds hit yavin1 at once
+            # and the collision left it with an empty gravity table
+            # (2026-10-23). Each pod builds gravity at startup from the default
+            # list (the same StevenBlack list yavin1 uses), and its own weekly
+            # gravity cron picks up any synced adlist changes. To apply new
+            # adlists sooner: kubectl exec each pod -c pihole -- pihole -g.
             - name: RUN_GRAVITY
-              value: "true"
+              value: "false"
             # The local Pi-hole may still be starting when the first sync
             # runs; if auth retries run out the container exits and kubelet
             # restarts it, which is the intended retry loop.
