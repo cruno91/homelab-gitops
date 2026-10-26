@@ -78,6 +78,17 @@ spec:
                   enabled: false
               deployment:
                 kind: {{ .deploymentKind }}
+              {{- if .hostPorts }}
+              # A hostPort DaemonSet cannot surge: the chart default
+              # (maxSurge 1, maxUnavailable 0) schedules the new pod next to
+              # the old one, it can never bind 80/443, and the rollout sits
+              # Pending forever (2026-10-25, first chart bump on mgmt). Replace
+              # in place, one node at a time; Pi-hole round-robins the other two.
+              updateStrategy:
+                rollingUpdate:
+                  maxSurge: 0
+                  maxUnavailable: 1
+              {{- end }}
               service:
                 # NOTE: the Service type lives at service.spec.type in this chart,
                 # NOT service.type. Setting the latter is silently ignored and you
