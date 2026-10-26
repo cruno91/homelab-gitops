@@ -89,6 +89,27 @@ spec:
                   maxSurge: 0
                   maxUnavailable: 1
               {{- end }}
+              {{- if eq .deploymentKind "Deployment" }}
+                # Two replicas so a node drain (Phase 5 k8s upgrades) never
+                # takes the only ingress pod with it. The chart's default
+                # surge-first rollout is fine here: klipper owns 80/443, not
+                # the pod. Anti-affinity is preferred, not required, so a
+                # rollout still completes with a node already out.
+                replicas: 2
+              podDisruptionBudget:
+                enabled: true
+                minAvailable: 1
+              affinity:
+                podAntiAffinity:
+                  preferredDuringSchedulingIgnoredDuringExecution:
+                    - weight: 100
+                      podAffinityTerm:
+                        topologyKey: kubernetes.io/hostname
+                        labelSelector:
+                          matchLabels:
+                            app.kubernetes.io/name: traefik
+                            app.kubernetes.io/instance: traefik-traefik
+              {{- end }}
               service:
                 # NOTE: the Service type lives at service.spec.type in this chart,
                 # NOT service.type. Setting the latter is silently ignored and you
