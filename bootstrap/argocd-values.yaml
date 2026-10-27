@@ -2,6 +2,11 @@ global:
   # Drives the server ingress hostname AND the `url` in argocd-cm that the UI uses
   # for self-links — one value covers both, so no configs.cm.url override is needed.
   domain: argocd.mgmt.wretchedhive.io
+  # Chart 10.0.0 flipped this default to true. mgmt's Canal enforces
+  # NetworkPolicy, so keep today's behaviour; adopting the chart's policies
+  # is its own change.
+  networkPolicy:
+    create: false
 
 server:
   # Pi-hole round-robins argocd.mgmt.wretchedhive.io to the three RKE2 nodes.
@@ -89,9 +94,9 @@ repoServer:
       secret:
         secretName: sops-age
   initContainers:
-    # Copies static ksops + kustomize binaries out of the ksops image into
-    # a shared volume the sidecar reads. Standalone image so the sidecar
-    # itself stays a plain argocd image (see version-pin caveat above).
+    # Copies the static ksops binary out of the ksops image into a shared
+    # volume the sidecar reads. Standalone image so the sidecar itself
+    # stays a plain argocd image (see version-pin caveat above).
     #
     # ksops is an "alpha exec plugin" — kustomize's alpha-plugin loader
     # requires the binary at a specific relative path under the plugin
@@ -99,27 +104,22 @@ repoServer:
     # For the ksops generator we declare (viaduct.ai/v1, kind: ksops),
     # that path is viaduct.ai/v1/ksops/ksops. The sidecar's
     # KUSTOMIZE_PLUGIN_HOME env below points at /custom-tools/plugins.
+    #
+    # Since v4.4 the image is distroless (no shell) and runs as nonroot, so
+    # `ksops install <dir>` does the copy. It writes <dir>/ksops but does
+    # not create <dir>; the subPath mount makes kubelet create the plugin
+    # directory, with the emptyDir's 0777 mode, before the container starts.
     - name: install-ksops
-      image: viaductoss/ksops:v4.3.3
-      command: ["/bin/sh", "-c"]
-      args:
-        - |
-          set -eu
-          echo "Installing KSOPS..."
-          # Older KSOPS docs referenced `ksops-static`; the v4.3.x images
-          # ship a single statically-linked binary called just `ksops`
-          # (alongside kustomize) under WORKDIR /usr/local/bin.
-          mkdir -p /custom-tools/plugins/viaduct.ai/v1/ksops
-          mv ksops /custom-tools/plugins/viaduct.ai/v1/ksops/ksops
-          mv kustomize /custom-tools/kustomize
-          echo "Done."
+      image: viaductoss/ksops:v4.5.1
+      command: ["/usr/local/bin/ksops", "install", "/plugin"]
       volumeMounts:
-        - mountPath: /custom-tools
+        - mountPath: /plugin
           name: custom-tools
+          subPath: plugins/viaduct.ai/v1/ksops
   extraContainers:
     - name: ksops
-      # Pin: matches argo-cd chart 9.5.21 appVersion. See comment above.
-      image: quay.io/argoproj/argocd:v3.4.3
+      # Pin: matches argo-cd chart 10.11.6 appVersion. See comment above.
+      image: quay.io/argoproj/argocd:v3.5.6
       command: [/var/run/argocd/argocd-cmp-server]
       env:
         - name: SOPS_AGE_KEY_FILE
@@ -177,7 +177,10 @@ extraObjects:
           discover:
             find:
               command: [sh, -c, "find . -name '*.enc.yaml' | head -1"]
+          # The argocd image's own kustomize, the same one that renders
+          # every non-KSOPS app. ksops v4.5.1 no longer copies its bundled
+          # kustomize unless asked (`--with-kustomize`).
           generate:
-            command: [/custom-tools/kustomize]
+            command: [/usr/local/bin/kustomize]
             args: [build, --enable-alpha-plugins, --enable-exec, .]
           lockRepo: false
