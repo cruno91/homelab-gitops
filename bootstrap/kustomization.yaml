@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Pulled into clusters/mgmt so mgmt-bootstrap keeps the `argocd` Application in
+# sync with git. Day-0 still applies argocd-app.yaml by hand (README); after
+# that, a chart bump in argocd-app.yaml lands on merge. Until 2026-10-26 nothing
+# tracked it, so the Phase 2e chart bump needed a manual `kubectl apply`.
+#
+# Only argocd-app.yaml. argocd-values.yaml is Helm values read through the
+# Application's $values ref, and root-appset.yaml (the cluster-bootstrap
+# ApplicationSet that generates mgmt-bootstrap) stays hand-applied: an app
+# that manages its own parent is one bad commit away from removing itself.
+resources:
+  - argocd-app.yaml
