@@ -3,6 +3,12 @@ kind: Application
 metadata:
   name: argocd
   namespace: argocd
+  annotations:
+    # mgmt-bootstrap manages this Application (via clusters/mgmt). The
+    # finalizer below means deleting it deletes Argo CD itself, so mgmt-bootstrap
+    # must never prune it (if it leaves git) or delete it (if mgmt-bootstrap is
+    # deleted). Removing Argo CD stays a deliberate, manual act.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
