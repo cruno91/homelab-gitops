@@ -111,6 +111,17 @@ spec:
       kind: Cluster
       jqPathExpressions:
         - '.spec.rkeConfig.machinePools[].dynamicSchemaSpec'
+    # creatorId is needed only on CREATE: the webhook requires it to equal the
+    # applier (see apps/harvester-clusters/dev.yaml). On UPDATE the webhook
+    # allows only keeping or removing it. The Rancher 2.15.3 upgrade
+    # (2026-11-01) left the live dev Cluster without it, after which every
+    # self-heal apply was "adding" it and was denied with "creatorID annotation
+    # cannot be changed". Ignoring it lets updates send the live value, while a
+    # fresh create still carries the annotation from git.
+    - group: provisioning.cattle.io
+      kind: Cluster
+      jsonPointers:
+        - /metadata/annotations/field.cattle.io~1creatorId
   syncPolicy:
     automated:
       # prune: false, UNLIKE every other Application in this repo. With prune on,
