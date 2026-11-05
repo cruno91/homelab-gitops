@@ -1,0 +1,62 @@
+---
+# Rancher on mgmt. ADR-0004 always meant Rancher to move here after day 0; it
+# stayed an ansible-managed Helm release until 2026-11-01, when this
+# Application adopted the running release at the same chart version and values,
+# without restarting anything. homelab-ansible's rke2-mgmt-rancher.yml is day-0 only
+# from now on, and its rancher_chart_version pin must match targetRevision
+# below (its CI checks this file).
+#
+# Own file rather than apps.yaml: the ansible pin check reads single-document
+# files.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rancher
+  namespace: argocd
+  annotations:
+    # Compare with a server-side dry-run apply, the same way the adoption was
+    # verified. The day-0 Helm install still owns CATTLE_BOOTSTRAP_PASSWORD on
+    # the Deployment (see values below); a server-side diff leaves fields owned
+    # by another manager alone instead of reporting them as drift.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  # DELIBERATELY NO resources-finalizer (ADR-0011). Deleting this Application
+  # must orphan Rancher, never uninstall it.
+spec:
+  project: default
+  sources:
+    - repoURL: https://releases.rancher.com/server-charts/stable
+      chart: rancher
+      targetRevision: 2.15.3
+      helm:
+        releaseName: rancher
+        # Same as the ansible role's values, minus bootstrapPassword: it only
+        # matters on first install and does not belong in git. Without it the
+        # chart renders neither bootstrap-secret nor the env var that reads
+        # it; the existing ones stay as the day-0 install left them.
+        valuesObject:
+          hostname: rancher.mgmt.wretchedhive.io
+          replicas: 3
+          agentTLSMode: system-store
+          # Traefik terminates TLS at the yavin Gateway and routes via
+          # apps/mgmt-control-plane; the chart emits no Ingress or Gateway.
+          tls: external
+          networkExposure:
+            type: none
+          ingress:
+            tls:
+              source: secret
+          # Argo runs Helm post-delete hooks when an Application is deleted.
+          # Rancher's cleans out Rancher's namespaces and CRDs, so a
+          # mistaken delete would undo the orphan-only policy above.
+          # Uninstalling Rancher is a manual job.
+          postDelete:
+            enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cattle-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
