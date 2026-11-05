@@ -9,6 +9,14 @@ global:
     create: false
 
 server:
+  # Two replicas + a PDB so draining one mgmt node never takes the UI/API down.
+  # With one replica, every drain during the 2026-11 RKE2 upgrade cost ~10-15 s
+  # of 503s (Traefik had no endpoint). The chart's default soft pod
+  # anti-affinity (global.affinity.podAntiAffinity) spreads them across nodes.
+  replicas: 2
+  pdb:
+    enabled: true
+    minAvailable: 1
   # Pi-hole round-robins argocd.mgmt.wretchedhive.io to the three RKE2 nodes.
   # Since W2, Traefik (DaemonSet on hostPort 443 — ADR-0010) terminates TLS at
   # the `yavin` Gateway and speaks plain HTTP to argocd-server. The addresses are
@@ -79,6 +87,12 @@ notifications:
 # and update `repoServer.extraContainers[0].image` below to match. A mismatch
 # risks socket / protocol drift between cmp-server and repo-server.
 repoServer:
+  # Same reasoning as server: two replicas + PDB so manifest generation (and the
+  # KSOPS sidecar) survives a node drain. Each replica carries its own sidecar.
+  replicas: 2
+  pdb:
+    enabled: true
+    minAvailable: 1
   env:
     # Where the ksops sidecar looks for the age key file. The `sops-age`
     # Secret is mounted at /.config/sops/age below.

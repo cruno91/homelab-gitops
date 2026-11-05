@@ -77,7 +77,7 @@ These are the October 2026 rules, kept because each one was earned.
 | Pi-hole (primary, yavin1) | Portainer stack editor on yavin1 | Portainer | Not in git |
 | Portainer | ansible `inventory/group_vars/all.yml` `portainer_version` | `playbooks/portainer.yml` | |
 | code-server | upstream latest | `playbooks/codeserver.yml --tags codeserver_update` | |
-| mgmt RKE2 | ansible `inventory/group_vars/rke2-mgmt/main.yml` `rke2_version` | `playbooks/rke2-mgmt-update.yml` | |
+| mgmt RKE2 | ansible `inventory/group_vars/rke2-mgmt/main.yml` `rke2_version` | `playbooks/rke2-mgmt-update.yml` | `rke2_ingress_controller: none` in the same file must stay (see [Kubernetes](#kubernetes)) |
 | edge K3s | ansible `inventory/group_vars/k3s-edge.yml` `k3s_version` | `playbooks/k3s-edge-update.yml` | |
 | dev K3s | gitops `apps/harvester-clusters/dev.yaml` `kubernetesVersion` | Argo CD → Rancher provisioning | |
 | kube-vip | ansible `kubevip_version` in `k3s-edge.yml` **and** `rke2-mgmt/main.yml` | `playbooks/kubevip-update.yml` | One cluster at a time |
@@ -160,7 +160,23 @@ Before taking any version:
   that ships the same app version, since it's all risk and no gain.
 - For community Rancher, only `rancher-stable` versions count. Some patch releases are Prime-only
   (October 2026: 2.14.4–2.14.6).
+- **Read the "Important" notes and any "do not install" notice too**, not just "breaking". In
+  November 2026 both mattered: kube-vip's v1.3.0 notes said not to install it (its binary reported
+  v1.2.4; v1.3.1 is the fixed re-release), and RKE2 1.36's "Important Note" changed its bundled
+  ingress default. That change would have taken down mgmt ([Kubernetes](#kubernetes)).
 - **Kubernetes:** take the highest patch in Rancher's certified list, not the highest that exists.
+  The list is in the KDM metadata the running Rancher reads (`kdm-branch` setting, e.g.
+  `release-v2.15`). This prints the newest three per minor for the running Rancher version:
+  ```zsh
+  RV=$(kubectl --context rke2-mgmt get settings.management.cattle.io server-version -o jsonpath='{.value}')
+  BR=$(kubectl --context rke2-mgmt get settings.management.cattle.io kdm-branch -o jsonpath='{.value}')
+  curl -sL https://releases.rancher.com/kontainer-driver-metadata/$BR/data.json | python3 -c '
+  import json,sys; d=json.load(sys.stdin); v=lambda s: tuple(int(x) for x in s.lstrip("v").split("-")[0].split("."))
+  R=v(sys.argv[1])
+  for dist in ("k3s","rke2"):
+      ok=[r["version"] for r in d[dist]["releases"] if v(r.get("minChannelServerVersion","v0.0.0"))<=R<=v(r.get("maxChannelServerVersion","v99.0.0"))]
+      for m in sorted({x.split(".")[1] for x in ok}): print(dist, "1."+m, [x for x in ok if x.split(".")[1]==m][-3:])' "$RV"
+  ```
 
 ---
 
@@ -372,6 +388,11 @@ For a **chart major**, read the chart's upgrade notes: 10.0.0 silently flipped t
 default. KSOPS ≥ 4.4 is distroless and nonroot, so the init container must stay
 `ksops install /plugin` with the `plugins/viaduct.ai/v1/ksops` subPath.
 
+`argocd-server` and `argocd-repo-server` run 2 replicas with a PDB (`minAvailable: 1`) since
+2026-11. Before that, every mgmt node drain cost ~10–15 s of Argo UI 503s. Check a chart upgrade
+keeps the `replicas` / `pdb` keys. The application-controller, applicationset-controller and redis
+stay single: a drain briefly pauses reconciliation and the cache, not the UI.
+
 Then ansible `argocd_chart_version`. Workstation CLI: `brew upgrade argocd`.
 
 **Gate:**
@@ -456,7 +477,7 @@ mgmt**, one per day if you like, each gated.
 
 | Cluster | Change | Roll out | Watch |
 |---|---|---|---|
-| dev | gitops `apps/harvester-clusters/dev.yaml` `kubernetesVersion`. First check the version is offered: Rancher UI → Cluster Management → dev → Edit Config → version list → **Cancel** | merge; Rancher replaces nodes one at a time | `KUBECONFIG=/tmp/dev.kubeconfig kubectl get nodes -w` |
+| dev | gitops `apps/harvester-clusters/dev.yaml` `kubernetesVersion`. Must be in the KDM list above (that list is what the Rancher UI's version dropdown shows) | merge; Rancher's system agent restarts K3s in place, one node at a time, with no drain or VM replacement. In 2026-11 all three took ~30 s | `KUBECONFIG=/tmp/dev.kubeconfig kubectl get nodes -w` |
 | edge | ansible `k3s_version` in `inventory/group_vars/k3s-edge.yml` | `ansible-playbook playbooks/k3s-edge-update.yml --ask-become-pass` (serial, etcd-gated: `k3s_settle_seconds`) | the endpoint watch, VIP `10.0.3.20` |
 | mgmt | ansible `rke2_version` in `inventory/group_vars/rke2-mgmt/main.yml`; snapshot again right before | `ansible-playbook playbooks/rke2-mgmt-update.yml --ask-become-pass` (serial, etcd-gated: `rke2_settle_seconds`) | `labhealth`, `helm --kube-context rke2-mgmt list -n kube-system` (bundled charts update too) |
 
@@ -465,6 +486,23 @@ mgmt**, one per day if you like, each gated.
 - The VIP answers 401.
 - The endpoint watch stayed at 200.
 - Argo is all green. Allow ~5 min after mgmt nodes cycle.
+
+**RKE2 (mgmt): check the bundled components, not just Kubernetes.** RKE2 ships CNI, CoreDNS,
+metrics-server and an ingress controller, and a minor can change their defaults. Read the "Important
+Note" and "Charts" sections of the target release. If config needs to change, remember that
+`rke2-mgmt-update.yml` **doesn't rewrite `config.yaml`**. Land the config first with
+`rke2-mgmt-reconfigure.yml` while still on the old version, then bump the version.
+
+- **The ingress default.** From 1.36 RKE2 deploys its own Traefik unless an ingress-nginx HelmChart
+  exists. mgmt removed ingress-nginx in W2, so without `rke2_ingress_controller: none` (in
+  `config.yaml` as `ingress-controller: none`) it would deploy `rke2-traefik` and `rke2-traefik-crd`.
+  That means a second controller on hostPorts 80/443 and a second owner for the Gateway API CRDs.
+- **After an upgrade, confirm it** on each node:
+  `journalctl -u rke2-server | grep 'Using ingress-controller'` shows `[none]`, and
+  `kubectl -n kube-system get helmcharts` lists no ingress chart.
+
+**Edge after a roll:** the last node drained ends up with no Traefik, Pi-hole or whoami pods,
+because nothing moves pods back. They're still spread across two nodes, so this is fine.
 
 ### kube-vip
 
@@ -475,8 +513,19 @@ while true; do printf '%s %s\n' "$(date +%T)" "$(curl -sk -o /dev/null -w '%{htt
 ansible-playbook playbooks/kubevip-update.yml --limit k3s-edge --ask-become-pass                                                                     # then --limit rke2-mgmt
 ```
 
-**Gate:** every kube-vip pod is on the new image, and the VIP watch showed at most a few seconds of
-non-401.
+**Gate:**
+- Every kube-vip pod is on the new image.
+- The VIP watch showed at most a few seconds of non-401. 2026-11 numbers for reference: edge 0
+  misses, mgmt ~3 s while the VIP moved nodes.
+- Each pod's log reports the new version (`kube-vip.io version=`). That catches a mislabelled build
+  like v1.3.0.
+- Exactly one node holds the VIP: `ip -4 -o addr | grep <vip>` on each.
+
+Start the VIP watch **before** the play: the whole roll takes ~10 s.
+
+Check the RBAC against the new release's generated rules (`kube-vip manifest rbac`, or
+`pkg/kubevip/config_generator.go` in its source). Extra rules for features we don't run
+(`svc_enable: "false"`) can be skipped.
 
 ---
 
