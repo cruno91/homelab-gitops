@@ -46,7 +46,7 @@ spec:
       containers:
         - name: pihole
           # Same release the primary is being pinned to in Phase 1e.
-          image: pihole/pihole:2026.10.0
+          image: pihole/pihole:2026.10.1
           env:
             - name: TZ
               value: America/New_York
