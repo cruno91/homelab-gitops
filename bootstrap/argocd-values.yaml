@@ -132,8 +132,8 @@ repoServer:
           subPath: plugins/viaduct.ai/v1/ksops
   extraContainers:
     - name: ksops
-      # Pin: matches argo-cd chart 10.11.6 appVersion. See comment above.
-      image: quay.io/argoproj/argocd:v3.5.6
+      # Pin: matches argo-cd chart 10.11.7 appVersion. See comment above.
+      image: quay.io/argoproj/argocd:v3.5.7
       command: [/var/run/argocd/argocd-cmp-server]
       env:
         - name: SOPS_AGE_KEY_FILE
