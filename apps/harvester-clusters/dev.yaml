@@ -54,7 +54,7 @@ metadata:
 spec:
   # namespace:name form. Deliberately NOT in git - see ADR-0012.
   cloudCredentialSecretName: cattle-global-data:cc-qf8cr
-  kubernetesVersion: v1.35.8+k3s1
+  kubernetesVersion: v1.36.5+k3s1
   # Rancher server-side-defaults this to {}. Declared so git matches the live
   # object - otherwise Argo reports permanent drift and selfHeal fights the
   # webhook. (ACE/authorized-cluster-endpoint stays off.)
