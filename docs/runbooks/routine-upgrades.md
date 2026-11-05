@@ -265,18 +265,17 @@ done
 
 If they differ, reboot:
 - **codeserver Pi or yavin1:** `ansible-playbook playbooks/site.yml --tags manual_reboot --limit <host>`.
-- **edge:** `ansible-playbook playbooks/k3s-edge-reboot.yml --ask-become-pass`, drained and serial.
-  See the warning below.
+- **edge:** `ansible-playbook playbooks/k3s-edge-reboot.yml --ask-become-pass`, drained, serial
+  and etcd-gated.
 - **Proxmox:** [Proxmox host](#proxmox-host).
 
 Ubuntu (mgmt VMs) does write the file, so `os_upgrade` reboots those itself through the safe path.
 
-> **⚠ Edge reboots have no etcd gate yet.** `k3s/tasks/safe-reboot.yml` and `update.yml` move on as
-> soon as the node is `Ready`. That is exactly what caused the 2026-10-18 mgmt quorum loss, before mgmt
-> got `rke2/tasks/control-plane-settled.yml`. Until edge has the equivalent, wait between nodes
-> yourself. The play doesn't pause, so run it one node at a time with `--limit <node>`. Before the
-> next node, confirm all three edge nodes `Ready` and the `10.0.3.20` VIP answering, then wait a
-> minute or two for etcd to settle.
+Both clusters' serial plays wait for etcd before they uncordon a node and move on. A node being
+`Ready` isn't enough, which is what caused the 2026-10-18 mgmt quorum loss. mgmt uses
+`rke2/tasks/control-plane-settled.yml` (`rke2_settle_seconds`), edge uses
+`k3s/tasks/control-plane-settled.yml` (`k3s_settle_seconds`). If a play stops at that gate, don't
+re-run it until etcd is healthy on all three nodes.
 
 ### Proxmox host
 
@@ -458,7 +457,7 @@ mgmt**, one per day if you like, each gated.
 | Cluster | Change | Roll out | Watch |
 |---|---|---|---|
 | dev | gitops `apps/harvester-clusters/dev.yaml` `kubernetesVersion`. First check the version is offered: Rancher UI → Cluster Management → dev → Edit Config → version list → **Cancel** | merge; Rancher replaces nodes one at a time | `KUBECONFIG=/tmp/dev.kubeconfig kubectl get nodes -w` |
-| edge | ansible `k3s_version` in `inventory/group_vars/k3s-edge.yml` | `ansible-playbook playbooks/k3s-edge-update.yml --ask-become-pass` (**one node at a time**, see the edge warning in [OS patches](#os-patches)) | the endpoint watch, VIP `10.0.3.20` |
+| edge | ansible `k3s_version` in `inventory/group_vars/k3s-edge.yml` | `ansible-playbook playbooks/k3s-edge-update.yml --ask-become-pass` (serial, etcd-gated: `k3s_settle_seconds`) | the endpoint watch, VIP `10.0.3.20` |
 | mgmt | ansible `rke2_version` in `inventory/group_vars/rke2-mgmt/main.yml`; snapshot again right before | `ansible-playbook playbooks/rke2-mgmt-update.yml --ask-become-pass` (serial, etcd-gated: `rke2_settle_seconds`) | `labhealth`, `helm --kube-context rke2-mgmt list -n kube-system` (bundled charts update too) |
 
 **Gate (each):**
