@@ -39,7 +39,7 @@ homelab-gitops/
 
 ## Bootstrap order
 
-Run these once, by hand. Everything after step 4 is Git. The full chronological build log is in [`docs/setup-log.md`](./docs/setup-log.md); decision rationale lives in [`docs/adr/`](./docs/adr/); a concept-level walkthrough of how the platform layer (`platform/`) fans components out across clusters is in [`docs/platform-layer.md`](./docs/platform-layer.md).
+Run these once, by hand. Everything after step 4 is Git. The full chronological build log is in [`docs/setup-log.md`](./docs/setup-log.md); decision rationale lives in [`docs/adr/`](./docs/adr/); a concept-level walkthrough of how the platform layer (`platform/`) fans components out across clusters is in [`docs/platform-layer.md`](./docs/platform-layer.md). Keeping everything current afterwards (where every version is pinned, cadence, order and gates) is in [`docs/runbooks/routine-upgrades.md`](./docs/runbooks/routine-upgrades.md).
 
 1. **Generate age key on your workstation:**
    ```
@@ -66,7 +66,7 @@ Run these once, by hand. Everything after step 4 is Git. The full chronological 
    kubectl apply -f bootstrap/argocd-app.yaml
    kubectl apply -f bootstrap/root-appset.yaml
    ```
-   From this point, Argo manages Argo. Future Helm value changes are committed to `bootstrap/argocd-values.yaml`; no more `helm upgrade` by hand.
+   From this point, Argo manages Argo. `clusters/mgmt` includes `bootstrap/` too, so after the first sync the `argocd` Application is tracked from git like everything else: chart bumps go in `bootstrap/argocd-app.yaml` and value changes in `bootstrap/argocd-values.yaml`. No more `helm upgrade` or `kubectl apply` by hand.
 
 5. **Register downstream clusters:**
    ```
